@@ -14,26 +14,31 @@ class Settings(BaseSettings):
         extra="allow",
     )
 
-    # --- Gemini / Vertex AI models ---
+    # --- Gemini models ---
     GEMINI_API_KEY: str = ""
     EMBEDDING_MODEL: str = ""
     CHAT_MODEL: str = ""
-    IMAGE_CHAT_MODEL: str = ""
-    IMAGE_MODEL: str = ""
     AUDIO_MODEL: str = ""
+    # Animates each scene's opening frame (Veo image-to-video).
+    VIDEO_MODEL: str = "veo-3.1-lite-generate-preview"
+    # Draws character references (when no real portrait is used) and each scene's opening frame.
+    IMAGE_MODEL: str = "gemini-3.1-flash-image"
+    # Use freely licensed Wikipedia/Wikimedia portraits of real historical figures as references.
+    USE_HISTORICAL_PORTRAITS: bool = True
+    # Per-request limit for Gemini API calls; a video clip normally takes 30-60s.
+    GENAI_REQUEST_TIMEOUT_SECONDS: int = 300
+    # How each scene is shown: "image" (still frame with a slow camera move - cheapest, no
+    # video model calls), "video" (every scene animated by VIDEO_MODEL), or "mixed" (the shot
+    # planner picks per scene; the opening hook is always video).
+    CLIP_MODE: str = "mixed"
+    # Research the story's subject on the web (Google Search grounding) in addition to the archive.
+    USE_WEB_RESEARCH: bool = True
 
     # --- Google Cloud project / storage ---
     PROJECT_ID: str = ""
-    LOCATION: str = ""
     BUCKET: str = ""
     BUCKET_URI: str = ""
     GOOGLE_APPLICATION_CREDENTIALS: str = ""
-
-    # --- Vertex AI Matching Engine (vector store) ---
-    DISPLAY_NAME: str = ""
-    INDEX_ID: str = ""
-    INDEX_ENDPOINT_ID: str = ""
-    DEPLOYED_INDEX_ID: str = ""
 
     # --- OCR (Tesseract) ---
     TESS_NEP_CONFIG: str = "--psm 6 --oem 3 -l nep"
@@ -52,6 +57,12 @@ class Settings(BaseSettings):
     VIDEO_PATH: str = "videos/"
     AUDIO_PATH: str = "audios/"
     OUTPUT_PATH: str = "output/"
+
+    # --- Concurrency ---
+    # How many clips/reference images to generate at once. Each is a ~30s call
+    # to VIDEO_MODEL, so running several concurrently cuts wall-clock time a
+    # lot; keep this bounded to stay under the API's rate limits.
+    MAX_PARALLEL_SCENES: int = 4
 
     def require(self, *names: str) -> None:
         """Fail fast if any of the named settings are unset, instead of letting

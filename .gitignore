@@ -9,6 +9,6 @@ google.json
 test.py
 upload.py
 notebooks/
-poised-sunrise-454004-n3-0bcfa4e7a8c4.json
+service_account.json
 *egg-info/
 runs/*

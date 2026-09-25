@@ -33,24 +33,63 @@ def format_text(text: str) -> str:
     return formatted_text
 
 
-def create_video_from_image(image_path: str, duration: float, output_path: str) -> str:
-    safe_duration = max(0.6, float(duration))
-    image_clip = ImageClip(image_path).with_duration(safe_duration)
+REEL_SIZE = (720, 1280)
 
-    def _ease_in_zoom_scale(t: float) -> float:
-        zoom_target = 1.3
-        progress = min(1.0, max(0.0, t / safe_duration))
-        eased_progress = 0.65 * progress + 0.35 * (1.0 - (1.0 - progress) * (1.0 - progress))
-        return 1.0 + (zoom_target - 1.0) * eased_progress
 
-    zoomed_image = image_clip.with_effects([vfx.Resize(_ease_in_zoom_scale)]).with_position(
-        ("center", "center")
+def _cover(clip, size: tuple[int, int]):
+    """Scale to fill `size` and center-crop the overflow, preserving aspect ratio."""
+    target_w, target_h = size
+    scale = max(target_w / clip.w, target_h / clip.h)
+    resized = clip.resized(scale)
+    return resized.cropped(
+        x_center=resized.w / 2, y_center=resized.h / 2, width=target_w, height=target_h
     )
-    video = CompositeVideoClip([zoomed_image], size=(image_clip.w, image_clip.h))
-    video.write_videofile(output_path, codec="libx264", fps=24)
-    video.close()
-    zoomed_image.close()
-    image_clip.close()
+
+
+def animate_still(
+    image_path: str, duration: float, output_path: str, zoom_in: bool = True, size: tuple[int, int] = REEL_SIZE
+) -> str:
+    """A `duration`-second silent clip of a still image with a slow, eased zoom.
+
+    Alternating `zoom_in` between scenes keeps consecutive still shots from feeling identical.
+    """
+    zoom = 0.15
+    still = _cover(ImageClip(image_path).with_duration(duration), size)
+
+    def _scale(t: float) -> float:
+        progress = min(1.0, max(0.0, t / duration))
+        eased = progress * progress * (3 - 2 * progress)
+        return 1 + zoom * eased if zoom_in else 1 + zoom * (1 - eased)
+
+    moving = still.with_effects([vfx.Resize(_scale)]).with_position(("center", "center"))
+    clip = CompositeVideoClip([moving], size=size).with_duration(duration)
+    try:
+        clip.write_videofile(output_path, codec="libx264", fps=24, audio=False, logger=None)
+    finally:
+        clip.close()
+        still.close()
+    return output_path
+
+
+def fit_clip_to_duration(
+    input_path: str, duration: float, output_path: str, size: tuple[int, int] = REEL_SIZE
+) -> str:
+    """Make a generated clip exactly `duration` seconds long, silent, and `size` pixels.
+
+    Longer clips are cut; shorter ones are slowed down rather than looped or frozen.
+    The model's own soundtrack is dropped since the narration replaces it.
+    """
+    clip = VideoFileClip(input_path, audio=False)
+    try:
+        if clip.duration >= duration:
+            fitted = clip.subclipped(0, duration)
+        else:
+            fitted = clip.with_effects([vfx.MultiplySpeed(final_duration=duration)])
+        if tuple(fitted.size) != tuple(size):
+            fitted = _cover(fitted, size)
+        fitted.write_videofile(output_path, codec="libx264", fps=24, audio=False, logger=None)
+    finally:
+        clip.close()
     return output_path
 
 

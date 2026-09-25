@@ -1,107 +1,61 @@
-from functools import lru_cache
+import io
+from pathlib import Path
 
-from google.api_core.exceptions import GoogleAPICallError
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from google.genai import types
 from PIL import Image
-from vertexai.preview.vision_models import ImageGenerationModel
 
 from ..core.logging import get_logger
 from ..core.settings import settings
+from ..utils.genai_client import get_genai_client
 from ..utils.retry import retry
 
 
-@lru_cache(maxsize=1)
-def _get_generation_model() -> ImageGenerationModel:
-    settings.require("IMAGE_MODEL")
-    return ImageGenerationModel.from_pretrained(settings.IMAGE_MODEL)
-
-
-@lru_cache(maxsize=1)
-def _get_chain():
-    settings.require("IMAGE_CHAT_MODEL", "GEMINI_API_KEY")
-    llm = ChatGoogleGenerativeAI(
-        model=settings.IMAGE_CHAT_MODEL,
-        api_key=settings.GEMINI_API_KEY,
-    )
-    return prompt_template | llm | StrOutputParser()
-
-
-prompt_template = PromptTemplate.from_template(
-    """
-You are an expert prompt engineer for AI image generation.
-
-Your task is to convert a historical narrative into a highly specific cinematic image prompt.
-
-The story and current scene might be in any other language than English, but your job is to craft a prompt in English.
-
-Full story (context only, do not summarize):
-{full_story}
-
-Current scene (focus here):
-{current_scene}
-
-Instructions:
-- Focus ONLY on the current scene
-- Extract key visual elements: characters, actions, setting, time period
-- Be very specific about:
-  - clothing
-  - architecture
-  - lighting
-  - mood
-  - camera framing (e.g., close-up, wide shot)
-- Ensure historical accuracy
-- Make each scene visually distinct
-- Avoid generic descriptions
-- No text or captions
-- English Language Only
-
-Output format:
-A single, highly detailed image generation prompt (no explanations).
-"""
-)
-
 logger = get_logger(__name__)
+
+RATE_LIMIT_KEYWORDS = ("429", "too many requests", "rate limit", "quota", "resource_exhausted")
 
 
 @retry(
-    exceptions=(GoogleAPICallError, RuntimeError, ValueError, TypeError),
-    max_attempts=5,
-    delay_seconds=5,
-    backoff_keywords=("quota", "rate"),
-    backoff_delay_seconds=30,
+    exceptions=(Exception,),
+    max_attempts=4,
+    delay_seconds=10,
+    backoff_keywords=RATE_LIMIT_KEYWORDS,
+    backoff_delay_seconds=90,
 )
-def generate_image_prompt(current_scene: str, full_story: str) -> str:
-    return _get_chain().invoke(
-        {
-            "full_story": full_story,
-            "current_scene": current_scene,
-        }
+def generate_image(prompt: str, reference_pngs: list[bytes] = ()) -> bytes:
+    """A 9:16 image from IMAGE_MODEL, optionally guided by reference images."""
+    settings.require("IMAGE_MODEL")
+    contents = [types.Part.from_bytes(data=png, mime_type="image/png") for png in reference_pngs]
+    response = get_genai_client().models.generate_content(
+        model=settings.IMAGE_MODEL,
+        contents=[*contents, prompt],
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE"],
+            image_config=types.ImageConfig(aspect_ratio="9:16"),
+        ),
     )
+    candidate = response.candidates[0] if response.candidates else None
+    parts = (candidate.content.parts if candidate and candidate.content else None) or []
+    for part in parts:
+        if part.inline_data and part.inline_data.data:
+            return part.inline_data.data
+    reason = getattr(candidate, "finish_reason", None) if candidate else "no candidates"
+    raise RuntimeError(f"{settings.IMAGE_MODEL} returned no image (finish reason: {reason})")
 
 
-@retry(exceptions=(GoogleAPICallError, RuntimeError, ValueError, TypeError), max_attempts=3, delay_seconds=30)
-def _generate_image_with_retry(prompt: str, output_path: str) -> str:
-    images = _get_generation_model().generate_images(
-        prompt=prompt,
-        number_of_images=1,
-        aspect_ratio="9:16",
-        negative_prompt="",
-        person_generation="allow_all",
-        safety_filter_level=None,
-        add_watermark=True,
-    )
-    images[0].save(output_path)
+def save_png(image_bytes: bytes, path: str) -> bytes:
+    """Normalise any downloaded/generated image to RGB PNG."""
+    buffer = io.BytesIO()
+    Image.open(io.BytesIO(image_bytes)).convert("RGB").save(buffer, format="PNG")
+    png = buffer.getvalue()
+    Path(path).write_bytes(png)
+    return png
+
+
+def generate_scene_frame(prompt: str, reference_paths: list[str], output_path: str) -> str:
+    """The opening frame of a scene, drawn from the characters' reference images so
+    they look the same in every scene; the video model then animates this frame."""
+    references = [Path(path).read_bytes() for path in reference_paths]
+    save_png(generate_image(prompt, references), output_path)
+    logger.info("Generated scene frame %s (%d reference image(s))", output_path, len(references))
     return output_path
-
-
-def generate_image(current_scene: str, full_story: str, output_path: str) -> str:
-    prompt = generate_image_prompt(current_scene=current_scene, full_story=full_story)
-    try:
-        return _generate_image_with_retry(prompt, output_path)
-    except (GoogleAPICallError, RuntimeError, ValueError, TypeError) as exc:
-        logger.warning("Using fallback image after image generation retries were exhausted: %s", exc)
-        fail_safe_image = Image.new("RGB", (768, 1408), color="black")
-        fail_safe_image.save(output_path)
-        return output_path

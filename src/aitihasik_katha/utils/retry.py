@@ -17,9 +17,11 @@ def retry(
     delay_seconds: float = 5.0,
     backoff_keywords: tuple[str, ...] = (),
     backoff_delay_seconds: float = 30.0,
+    should_retry: Callable[[BaseException], bool] | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """Retry a function on the given exceptions, with a longer wait when the
-    error message matches one of ``backoff_keywords`` (e.g. quota/rate limits)."""
+    error message matches one of ``backoff_keywords`` (e.g. quota/rate limits).
+    Errors for which ``should_retry`` returns False are raised immediately."""
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
@@ -30,7 +32,7 @@ def retry(
                     return func(*args, **kwargs)
                 except exceptions as exc:
                     attempt += 1
-                    if attempt >= max_attempts:
+                    if attempt >= max_attempts or (should_retry and not should_retry(exc)):
                         raise
                     message = str(exc).lower()
                     if backoff_keywords and any(keyword in message for keyword in backoff_keywords):
