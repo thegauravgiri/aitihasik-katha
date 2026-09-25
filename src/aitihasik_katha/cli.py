@@ -2,7 +2,7 @@ import argparse
 
 from .core.logging import configure_logging
 from .ingest.pdf_ingestor import ingest_directory, ingest_pdf
-from .pipeline import run_pipeline
+from .pipeline import run_pipeline_v1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -11,6 +11,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     pipeline_cmd = subparsers.add_parser("run", help="Run end-to-end generation pipeline")
     pipeline_cmd.add_argument("--topic", default=None, help="Optional seed topic for story generation")
+    pipeline_cmd.add_argument(
+        "--run-id",
+        default=None,
+        help="Resume an existing run id, reusing any already-generated stage output",
+    )
 
     ingest_cmd = subparsers.add_parser("ingest", help="Ingest one PDF or a directory")
     ingest_cmd.add_argument("--path", default=None, help="Single PDF path to ingest")
@@ -24,7 +29,7 @@ def main() -> None:
     configure_logging()
     args = build_parser().parse_args()
     if args.command == "run":
-        run_pipeline(topic=args.topic)
+        run_pipeline_v1(topic=args.topic, run_id=args.run_id)
         return
 
     if args.path:

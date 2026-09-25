@@ -1,17 +1,26 @@
-from google.cloud import storage
 import os
 
+from google.api_core.exceptions import GoogleAPICallError
+from google.cloud import storage
+
 from ..core.logging import get_logger
+from .retry import retry
 
 
 logger = get_logger(__name__)
+
+
+@retry(exceptions=(GoogleAPICallError,), max_attempts=3, delay_seconds=5)
+def _upload_from_filename(blob: storage.Blob, source_file_path: str) -> None:
+    blob.upload_from_filename(source_file_path)
+
 
 def upload_file_to_gcs(bucket_name: str, source_file_path: str, destination_blob_path: str, return_public: bool = True) -> str:
     """Upload a local file to GCS and return its gs:// URI."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(destination_blob_path)
-    blob.upload_from_filename(source_file_path)
+    _upload_from_filename(blob, source_file_path)
     if return_public:
         return f"https://storage.googleapis.com/{bucket_name}/{destination_blob_path}"
     return f"gs://{bucket_name}/{destination_blob_path}"
@@ -30,7 +39,7 @@ def upload_folder_to_gcs(bucket_name: str, source_folder: str, destination_prefi
             gcs_path = os.path.join(destination_prefix, relative_path).replace("\\", "/")
 
             blob = bucket.blob(gcs_path)
-            blob.upload_from_filename(local_path)
+            _upload_from_filename(blob, local_path)
 
             logger.debug("Uploaded %s to gs://%s/%s", local_path, bucket_name, gcs_path)
     if return_public:

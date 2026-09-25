@@ -1,9 +1,12 @@
 import io
+from functools import lru_cache
 
 from google.cloud import vision
 
 
-client = vision.ImageAnnotatorClient()
+@lru_cache(maxsize=1)
+def _get_client() -> vision.ImageAnnotatorClient:
+    return vision.ImageAnnotatorClient()
 
 
 def extract_text(image) -> str:
@@ -13,7 +16,7 @@ def extract_text(image) -> str:
     content = buffer.getvalue()
     image_obj = vision.Image(content=content)
 
-    response = client.text_detection(image=image_obj)
+    response = _get_client().text_detection(image=image_obj)
     if response.full_text_annotation:
         return response.full_text_annotation.text
     return ""

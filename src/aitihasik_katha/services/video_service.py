@@ -4,8 +4,6 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from google import genai
-from google.genai.types import GenerateVideosConfig
 from moviepy import (
     AudioFileClip,
     CompositeVideoClip,
@@ -20,15 +18,7 @@ from moviepy.video.tools.subtitles import file_to_subtitles
 from ..core.logging import get_logger
 
 
-client = genai.Client()
 logger = get_logger(__name__)
-config = GenerateVideosConfig(
-    aspect_ratio="9:16",
-    number_of_videos=1,
-    duration_seconds=8,
-    person_generation="allow_all",
-    resolution="720p",
-)
 
 
 def format_text(text: str) -> str:
@@ -41,39 +31,6 @@ def format_text(text: str) -> str:
         words = words[5:]
     formatted_text += f" {' '.join(words)} "
     return formatted_text
-
-
-def _build_video_prompt(current_scene: str, full_story: str) -> str:
-    return f"""
-            Create a cinematic, fun and educational video.
-
-            Full story context (for narrative understanding only):
-            {full_story}
-
-            Current scene (focus only on this moment):
-            {current_scene}
-
-            Instructions:
-            - Maintain strict consistency in characters, clothing, environment, and style
-            - Characters must look the same across all clips
-            - Use cinematic camera movement (slow pan, slight zoom, or tracking)
-            - Include natural motion (walking, gestures, environment movement like wind, dust, etc.)
-            - Keep pacing smooth and visually clear
-
-            Style:
-            - Cinematic realism
-            - Warm, engaging color tones
-            - Dramatic but fun and educational feel
-            - High detail and depth
-
-            Restrictions:
-            - No modern elements
-            - No text, captions, or watermark
-
-            Output:
-            A smooth, visually consistent 8-second cinematic video clip.
-        """
-
 
 
 def create_video_from_image(image_path: str, duration: float, output_path: str) -> str:
@@ -100,7 +57,7 @@ def create_video_from_image(image_path: str, duration: float, output_path: str) 
 def _build_reels_caption_clip(text: str, start_time: float, end_time: float, video_w: int, video_h: int):
     duration = max(0.1, float(end_time) - float(start_time))
     caption_text = format_text(text).upper()
-    caption_font = str(Path("data/fonts/KOMIKAX_.ttf"))
+    caption_font = str(Path("data/fonts/NotoSerifDevanagari-ExtraBold.ttf"))
 
     font_size = max(52, int(video_w * 0.082))
     max_text_width = int(video_w * 0.9)

@@ -1,10 +1,13 @@
 import random
 from datetime import timedelta
+from functools import lru_cache
 
+from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import texttospeech
 from moviepy import AudioFileClip
 from ..core.logging import get_logger
 from ..core.settings import settings
+from ..utils.retry import retry
 
 
 VOICE_PROMPTS = [
@@ -21,8 +24,12 @@ VOICE_PROMPTS = [
 ]
 
 
-client = texttospeech.TextToSpeechClient()
 logger = get_logger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _get_client() -> texttospeech.TextToSpeechClient:
+    return texttospeech.TextToSpeechClient()
 
 
 def get_audio_duration(audio_filepath: str) -> timedelta:
@@ -32,14 +39,28 @@ def get_audio_duration(audio_filepath: str) -> timedelta:
     return duration
 
 
+@retry(exceptions=(GoogleAPICallError,), max_attempts=3, delay_seconds=5)
+def _synthesize_speech(
+    synthesis_input: texttospeech.SynthesisInput,
+    voice: texttospeech.VoiceSelectionParams,
+    audio_config: texttospeech.AudioConfig,
+):
+    return _get_client().synthesize_speech(
+        input=synthesis_input,
+        voice=voice,
+        audio_config=audio_config,
+    )
+
+
 def generate_audio(text: str, output_path: str) -> str:
     """Generate an MP3 audio file from plain text narration."""
+    settings.require("AUDIO_MODEL")
     voice_prompt = random.choice(VOICE_PROMPTS)
     logger.info("Using voice prompt: %s", voice_prompt)
     synthesis_input = texttospeech.SynthesisInput(text=text, prompt=voice_prompt)
 
     voice = texttospeech.VoiceSelectionParams(
-        language_code="en-US",
+        language_code="ne-NP",
         name="Charon",
         model_name=settings.AUDIO_MODEL,
     )
@@ -47,11 +68,7 @@ def generate_audio(text: str, output_path: str) -> str:
         audio_encoding=texttospeech.AudioEncoding.MP3,
     )
 
-    response = client.synthesize_speech(
-        input=synthesis_input,
-        voice=voice,
-        audio_config=audio_config,
-    )
+    response = _synthesize_speech(synthesis_input, voice, audio_config)
 
     with open(output_path, "wb") as out:
         out.write(response.audio_content)

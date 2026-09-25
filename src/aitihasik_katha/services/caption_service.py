@@ -1,7 +1,11 @@
+from functools import lru_cache
+
+from google.api_core.exceptions import GoogleAPICallError
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from aitihasik_katha.core.settings import settings
 from aitihasik_katha.core.logging import get_logger
+from aitihasik_katha.utils.retry import retry
 
 
 CAPTION_PROMPT = """You are an expert Instagram growth strategist and viral content writer.
@@ -63,13 +67,26 @@ Follow these rules strictly to align with the latest Instagram algorithm (2025â€
 - Use line breaks for readability.
 - Avoid large blocks of text.
 
+LANGUAGE: ALWAYS ENGLISH, Despite the story being in other language.
+
 Output ONLY the final Instagram caption."""
 
-llm = ChatGoogleGenerativeAI(
-    model=settings.CHAT_MODEL,
-    api_key=settings.GEMINI_API_KEY
-)
 logger = get_logger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _get_llm() -> ChatGoogleGenerativeAI:
+    settings.require("CHAT_MODEL", "GEMINI_API_KEY")
+    return ChatGoogleGenerativeAI(
+        model=settings.CHAT_MODEL,
+        api_key=settings.GEMINI_API_KEY,
+    )
+
+
+@retry(exceptions=(GoogleAPICallError, RuntimeError, ValueError, TypeError), max_attempts=3, delay_seconds=5)
+def _invoke(messages: list) -> object:
+    return _get_llm().invoke(messages)
+
 
 def generate_caption(story) -> str:
     messages = [
@@ -77,7 +94,7 @@ def generate_caption(story) -> str:
         HumanMessage(story)
     ]
 
-    response = llm.invoke(messages)
+    response = _invoke(messages)
     caption = response.content
     if isinstance(caption, list):
         for item in caption:

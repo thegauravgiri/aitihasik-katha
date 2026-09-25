@@ -9,7 +9,7 @@ from pdf2image import convert_from_path
 from pypdf import PdfReader
 
 from ..core.logging import get_logger
-from ..storage.vector_store import store as vector_store
+from ..storage.vector_store import get_store
 from ..utils.ocr import extract_text
 from ..utils.translation import translate_text_sync
 
@@ -57,12 +57,13 @@ def split_text(documents: list[Document]) -> list[Document]:
 
 
 def add_to_vector_store(chunks: list[Document], source: str) -> None:
+    vector_store = get_store()
     if not vector_store.document_exists(source):
         vector_store.add_document(source, chunks)
 
 
 def ingest_pdf(doc_path: str, language: str = "en") -> None:
-    if vector_store.document_exists(doc_path):
+    if get_store().document_exists(doc_path):
         logger.info("%s is already in store", doc_path)
         return
 

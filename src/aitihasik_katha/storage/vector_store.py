@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import pandas as pd
 from google.cloud import aiplatform
 from sentence_transformers import SentenceTransformer
@@ -9,6 +11,7 @@ class VectorStore:
     """Thin adapter around Vertex AI Matching Engine for retrieval."""
 
     def __init__(self, source: str = "data/embeddings/nepali-history.json") -> None:
+        settings.require("PROJECT_ID", "LOCATION", "INDEX_ID", "INDEX_ENDPOINT_ID")
         self.df = pd.read_json(source, lines=True, orient="records")
 
         aiplatform.init(
@@ -69,4 +72,12 @@ class VectorStore:
         return randomly_selected.iloc[0]
 
 
-store = VectorStore()
+@lru_cache(maxsize=1)
+def get_store() -> VectorStore:
+    """Lazily construct the shared vector store on first use.
+
+    Deferring construction (rather than instantiating a module-level
+    singleton at import time) avoids requiring valid Vertex AI credentials
+    just to import this module.
+    """
+    return VectorStore()
