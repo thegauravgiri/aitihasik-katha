@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo/logo-horizontal.png" alt="Aitihasik Katha logo" width="520">
+  <img src="assets/logo/logo-horizontal-reversed.png" alt="Aitihasik Katha logo" width="520">
 </p>
 
 <p align="center">
