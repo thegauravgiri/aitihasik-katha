@@ -12,3 +12,4 @@ notebooks/
 service_account.json
 *egg-info/
 runs/*
+reports/
