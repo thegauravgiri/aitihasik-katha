@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 from moviepy import (
     AudioFileClip,
     CompositeVideoClip,
@@ -16,6 +17,7 @@ from moviepy import (
 from moviepy.video.tools.subtitles import file_to_subtitles
 
 from ..core.logging import get_logger
+from .title_card import title_layer
 
 
 logger = get_logger(__name__)
@@ -163,6 +165,17 @@ def _build_reels_caption_clip(text: str, start_time: float, end_time: float, vid
     return full_frame_caption.with_start(start_time).with_end(end_time)
 
 
+HOOK_TITLE_SECONDS = 2.4
+
+
+def _build_hook_title_clip(title: str, highlight: str | None, video_w: int, video_h: int):
+    """The cover title shown over the opening seconds, for viewers watching without sound."""
+    layer = title_layer(title, highlight, max_width=int(video_w * 0.86), max_font_size=int(video_w * 0.13))
+    clip = ImageClip(np.array(layer)).with_duration(HOOK_TITLE_SECONDS)
+    clip = clip.with_position(("center", int(video_h * 0.2) - layer.height // 2))
+    return clip.with_effects([vfx.CrossFadeOut(0.35)])
+
+
 def merge_video_clips(
     output_path: str | None = None,
     voice_over: str | None = None,
@@ -170,6 +183,7 @@ def merge_video_clips(
     background_music: str | None = None,
     clip_filenames: list[str] | None = None,
     video_path: str = "",
+    hook_title: dict | None = None,
 ) -> str | None:
     if clip_filenames:
         videos = [v for v in clip_filenames if v.lower().endswith(".mp4")]
@@ -208,13 +222,17 @@ def merge_video_clips(
         voice_clip = AudioFileClip(voice_over)
         final_clip = final_clip.with_audio(voice_clip)
 
+    overlays = []
     if subtitles:
         subtitle_items = file_to_subtitles(subtitles) if isinstance(subtitles, (str, os.PathLike)) else subtitles
-        subtitle_overlays = [
+        overlays = [
             _build_reels_caption_clip(text, start, end, final_clip.w, final_clip.h)
             for (start, end), text in subtitle_items
         ]
-        final_clip = CompositeVideoClip([final_clip, *subtitle_overlays])
+    if hook_title and hook_title.get("title"):
+        overlays.append(_build_hook_title_clip(hook_title["title"], hook_title.get("highlight"), final_clip.w, final_clip.h))
+    if overlays:
+        final_clip = CompositeVideoClip([final_clip, *overlays])
 
     if background_music:
         bgm_clip = AudioFileClip(background_music)

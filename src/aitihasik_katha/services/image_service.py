@@ -12,7 +12,11 @@ from ..utils.retry import retry
 
 logger = get_logger(__name__)
 
-RATE_LIMIT_KEYWORDS = ("429", "too many requests", "rate limit", "quota", "resource_exhausted")
+# Errors worth a long wait before retrying: quota and rate limits, and the API being briefly overloaded.
+RATE_LIMIT_KEYWORDS = (
+    "429", "too many requests", "rate limit", "quota", "resource_exhausted",
+    "503", "unavailable", "high demand", "overloaded",
+)
 
 
 @retry(

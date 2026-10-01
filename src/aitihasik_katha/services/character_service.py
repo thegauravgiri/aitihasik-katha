@@ -170,6 +170,7 @@ def build_scene_prompt(sheet: dict, scene_plan: dict, seconds: int) -> str:
         f"Style: {sheet['style']}",
     ]
     if visible:
-        lines.append("People in the shot: " + "; ".join(f"{c['name']} ({c['description']})" for c in visible))
+        # Describe people by appearance only: video models refuse prompts that name real people.
+        lines.append("People in the shot: " + "; ".join(c["description"] for c in visible))
     lines.append(f"Action and camera: {scene_plan['shot']}")
     return "\n".join(lines)

@@ -19,13 +19,14 @@ from .services.character_service import (
 from .services.image_service import generate_scene_frame
 from .services.instagram_service import get_instagram_service
 from .services.reference_service import resolve_reference
-from .services.video_generation_service import clip_duration, generate_scene_clip
+from .services.video_generation_service import VideoBlockedError, clip_duration, generate_scene_clip
 from .services.scene_timing import Subtitle, compute_scene_durations, split_into_scenes
 from .services.story_service import write_story
 from .services.subtitle_service import generate_transcription, get_subtitle
+from .services.thumbnail_service import plan_cover, render_cover
 from .services.video_service import animate_still, fit_clip_to_duration, merge_video_clips
 from .storage import run_store
-from .utils.gcs import upload_folder_to_gcs
+from .utils.gcs import upload_file_to_gcs, upload_folder_to_gcs
 
 
 logger = get_logger(__name__)
@@ -48,6 +49,8 @@ def _generate_story_stage(run_path: str, topic: str | None) -> str:
     if story.research_brief:
         (output_dir / "research.md").write_text(story.research_brief, encoding="utf-8")
     (output_dir / "sources.json").write_text(json.dumps(story.sources, ensure_ascii=False, indent=2), encoding="utf-8")
+    if story.plan:
+        (output_dir / "script_plan.json").write_text(json.dumps(story.plan, ensure_ascii=False, indent=2), encoding="utf-8")
     return story.text
 
 
@@ -179,7 +182,11 @@ def _generate_clips_stage(
         raw_path = os.path.join(run_path, settings.VIDEO_PATH, f"raw_clip_{idx}.mp4")
         if not os.path.exists(raw_path):
             seconds = clip_duration(durations[idx])
-            generate_scene_clip(build_scene_prompt(sheet, plan[idx], seconds), frame_paths[idx], seconds, raw_path)
+            try:
+                generate_scene_clip(build_scene_prompt(sheet, plan[idx], seconds), frame_paths[idx], seconds, raw_path)
+            except VideoBlockedError as exc:
+                logger.warning("Scene %s was blocked by the video model (%s); using a camera move over the still", idx, exc)
+                return animate_still(frame_paths[idx], durations[idx], final_path, zoom_in=idx % 2 == 0)
         return fit_clip_to_duration(raw_path, durations[idx], final_path)
 
     with ThreadPoolExecutor(max_workers=_scene_worker_count(len(scenes))) as executor:
@@ -190,8 +197,27 @@ def _generate_clips_stage(
     return clip_paths
 
 
+def _cover_plan_stage(run_path: str, scenes: list[str]) -> dict:
+    """The cover's title, highlighted word and source scene (also shown over the video's first seconds)."""
+    return _load_or_create_json(Path(run_path) / settings.OUTPUT_PATH / "cover.json", lambda: plan_cover(scenes))
+
+
+def _cover_stage(run_path: str, cover: dict, frame_paths: list[str]) -> str | None:
+    """Render the cover image from the chosen scene's frame. A cover problem never fails the run:
+    Instagram then picks a frame from the video itself."""
+    cover_path = os.path.join(run_path, settings.OUTPUT_PATH, "cover.jpg")
+    if os.path.exists(cover_path):
+        logger.info("Reusing existing cover %s", cover_path)
+        return cover_path
+    try:
+        return render_cover(frame_paths[cover["scene"]], cover["title"], cover.get("highlight"), cover_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not render the cover image: %s", exc)
+        return None
+
+
 def _assemble_video_stage(
-    run_path: str, audio_filepath: str, subtitles: list[Subtitle], clip_filenames: list[str]
+    run_path: str, audio_filepath: str, subtitles: list[Subtitle], clip_filenames: list[str], cover: dict | None = None
 ) -> str | None:
     final_video_output_filepath = os.path.join(run_path, settings.OUTPUT_PATH, "final_video.mp4")
     return merge_video_clips(
@@ -199,22 +225,38 @@ def _assemble_video_stage(
         voice_over=audio_filepath,
         subtitles=subtitles,
         clip_filenames=clip_filenames,
+        hook_title=cover,
     )
 
 
-def _publish_stage(run_path: str, story: str, run_id: str) -> None:
+def _write_caption(run_path: str, story: str) -> str:
     caption_path = Path(run_path) / settings.OUTPUT_PATH / "caption.txt"
     if caption_path.exists():
         logger.info("Reusing existing caption at %s", caption_path)
-        caption = caption_path.read_text(encoding="utf-8")
-    else:
-        logger.info("Generating caption for final video")
-        caption = generate_caption(story)
-        credits_path = Path(run_path) / settings.OUTPUT_PATH / "references.json"
-        credits = json.loads(credits_path.read_text(encoding="utf-8")) if credits_path.exists() else []
-        if credits:
-            caption += "\n\nReference images:\n" + "\n".join(credits)
-        caption_path.write_text(caption, encoding="utf-8")
+        return caption_path.read_text(encoding="utf-8")
+    logger.info("Generating caption for final video")
+    caption = generate_caption(story)
+    credits_path = Path(run_path) / settings.OUTPUT_PATH / "references.json"
+    credits = json.loads(credits_path.read_text(encoding="utf-8")) if credits_path.exists() else []
+    if credits:
+        caption += "\n\nReference images:\n" + "\n".join(credits)
+    caption_path.write_text(caption, encoding="utf-8")
+    return caption
+
+
+def _upload_cover(run_path: str) -> str | None:
+    cover_path = os.path.join(run_path, settings.OUTPUT_PATH, "cover.jpg")
+    if not os.path.exists(cover_path):
+        return None
+    try:
+        return upload_file_to_gcs(settings.BUCKET, cover_path, cover_path.replace("\\", "/"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Could not upload the cover image, posting without it: %s", exc)
+        return None
+
+
+def _publish_stage(run_path: str, story: str, run_id: str) -> None:
+    caption = _write_caption(run_path, story)
 
     run_record = run_store.get_run(run_id)
     if run_record and run_record.media_uri:
@@ -228,7 +270,9 @@ def _publish_stage(run_path: str, story: str, run_id: str) -> None:
         logger.info("Video uploaded to %s", media_uri)
 
     logger.info("Uploading media to Instagram")
-    get_instagram_service().upload_media(media_uri, caption=caption, media_type="REELS")
+    get_instagram_service().upload_media(
+        media_uri, caption=caption, media_type="REELS", cover_url=_upload_cover(run_path)
+    )
     run_store.upsert_run(run_id, status="published", instagram_uploaded=True)
     logger.info("Instagram upload complete")
 
@@ -271,6 +315,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
 
         scenes = split_into_scenes(story)
         logger.info("Prepared %s scene(s) for image/video generation", len(scenes))
+        cover = _cover_plan_stage(run_path, scenes)
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             audio_future = executor.submit(_generate_audio_stage, story, run_path)
@@ -278,6 +323,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
             audio_filepath, total_audio_duration, subtitles = audio_future.result()
             sheet, plan, frame_paths = visuals_future.result()
         run_store.upsert_run(current_run_id, status="audio_ready")
+        _cover_stage(run_path, cover, frame_paths)
 
         generated_video_clips = _generate_clips_stage(
             scenes,
@@ -290,7 +336,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
         )
         run_store.upsert_run(current_run_id, status="media_ready")
 
-        final_video_path = _assemble_video_stage(run_path, audio_filepath, subtitles, generated_video_clips)
+        final_video_path = _assemble_video_stage(run_path, audio_filepath, subtitles, generated_video_clips, cover)
 
         if not final_video_path:
             logger.warning("Pipeline completed without creating final video for run_id=%s", current_run_id)
@@ -308,6 +354,15 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
                 "Run %s was already published to Instagram; skipping re-publish "
                 "(use `instagram upload --run-id %s` to force a republish).",
                 current_run_id, current_run_id,
+            )
+            return final_video_path
+
+        if not settings.AUTO_PUBLISH:
+            _write_caption(run_path, story)
+            logger.info(
+                "Ready for review in %s/ (final_video.mp4, cover.jpg, caption.txt). Post it with: "
+                "python -m aitihasik_katha instagram upload --run-id %s",
+                os.path.join(run_path, settings.OUTPUT_PATH), current_run_id,
             )
             return final_video_path
 

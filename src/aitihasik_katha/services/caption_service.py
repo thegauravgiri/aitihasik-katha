@@ -15,8 +15,9 @@ Your task is to generate a HIGH-PERFORMING Instagram caption based on the given 
 Follow these rules strictly to align with the latest Instagram algorithm (2025–2026):
 
 1. HOOK (First Line is Critical)
-- Start with a powerful, curiosity-driven or emotional hook.
-- Make people STOP scrolling within 1–2 seconds.
+- Start with a powerful, curiosity-driven or emotional hook, at most 90 characters, so it shows in full
+  before Instagram's "more" cut.
+- Make people STOP scrolling within 1–2 seconds. Use the most shocking concrete fact from the story.
 - Keep it short, punchy, and relatable.
 
 2. STORY / VALUE
@@ -26,17 +27,17 @@ Follow these rules strictly to align with the latest Instagram algorithm (2025�
 - Maintain clarity and flow.
 
 3. ENGAGEMENT TRIGGERS
-- Add at least 1–2 interaction prompts:
-  Examples:
-  - Ask a relatable question
-  - Invite opinions
-  - Encourage tagging a friend
+- Ask ONE specific question about this story that people can disagree on or answer in a few words
+  (for example "Would you have opened the gates?" or "Which of these two kings was right?").
+  Never a generic "What do you think?".
 - Aim to increase comments, shares, and saves.
 
 4. SHAREABILITY OPTIMIZATION
-- Include a line that makes people want to send it to someone.
-  Example:
-  “Send this to someone who needs this today.”
+- Sends to friends are the strongest signal on Instagram. Include one line that names a specific kind of
+  person to send it to, tied to this story.
+  Examples:
+  “Send this to the friend who still thinks Dashain is only about food.”
+  “Send this to someone from Patan.”
 
 5. CALL TO ACTION (CTA)
 - Include a soft CTA such as:

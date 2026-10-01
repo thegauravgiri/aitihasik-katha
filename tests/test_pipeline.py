@@ -14,8 +14,8 @@ class _FakeInstagram:
     def __init__(self, calls):
         self._calls = calls
 
-    def upload_media(self, media_url, caption, media_type):
-        self._calls.append(("instagram", media_url, caption, media_type))
+    def upload_media(self, media_url, caption, media_type, cover_url=None):
+        self._calls.append(("instagram", media_url, caption, media_type, cover_url))
 
 
 @pytest.fixture
@@ -23,6 +23,7 @@ def wired_pipeline(tmp_path, monkeypatch):
     """Point the pipeline at a scratch directory and stub out every external call."""
     monkeypatch.setattr(settings, "RUNS_PATH", str(tmp_path))
     monkeypatch.setattr(settings, "CLIP_MODE", "video")
+    monkeypatch.setattr(settings, "AUTO_PUBLISH", True)
 
     calls = []
 
@@ -84,8 +85,18 @@ def wired_pipeline(tmp_path, monkeypatch):
             f.write("fake-clip")
         return output_path
 
-    def _merge_video_clips(output_path, voice_over, subtitles, clip_filenames):
-        calls.append(("merge", tuple(clip_filenames)))
+    def _merge_video_clips(output_path, voice_over, subtitles, clip_filenames, hook_title=None):
+        calls.append(("merge", tuple(clip_filenames), hook_title))
+        return output_path
+
+    def _plan_cover(scenes):
+        calls.append(("cover_plan",))
+        return {"title": "राजाको रहस्य", "highlight": "रहस्य", "scene": 1}
+
+    def _render_cover(frame_path, title, highlight, output_path):
+        calls.append(("cover", frame_path, title, highlight))
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("fake-cover")
         return output_path
 
     monkeypatch.setattr(
@@ -95,6 +106,7 @@ def wired_pipeline(tmp_path, monkeypatch):
             text="one two three. four five six.",
             research_brief="Hook: a surprising fact.",
             sources=[{"title": "britannica.com", "uri": "https://example.com/1"}],
+            plan={"seconds": 45, "reason": "a story", "target_words": 99},
         ),
     )
     monkeypatch.setattr(pipeline, "generate_audio", _generate_audio)
@@ -109,6 +121,9 @@ def wired_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "fit_clip_to_duration", _fit_clip_to_duration)
     monkeypatch.setattr(pipeline, "animate_still", _animate_still)
     monkeypatch.setattr(pipeline, "merge_video_clips", _merge_video_clips)
+    monkeypatch.setattr(pipeline, "plan_cover", _plan_cover)
+    monkeypatch.setattr(pipeline, "render_cover", _render_cover)
+    monkeypatch.setattr(pipeline, "upload_file_to_gcs", lambda bucket, src, dst: "https://example.com/cover.jpg")
     monkeypatch.setattr(pipeline, "generate_caption", lambda story: "a caption")
     monkeypatch.setattr(pipeline, "upload_folder_to_gcs", lambda bucket, src, dst: "https://example.com/")
     monkeypatch.setattr(pipeline, "get_instagram_service", lambda: _FakeInstagram(calls))
@@ -129,7 +144,7 @@ def test_run_pipeline_v1_happy_path(wired_pipeline):
     # so only counts and dependency ordering are checked, not the exact interleaving.
     for kind, expected in [
         ("audio", 1), ("sheet", 1), ("reference", 1), ("plan", 1), ("frame", 2),
-        ("clip", 2), ("fit", 2), ("merge", 1), ("instagram", 1),
+        ("clip", 2), ("fit", 2), ("merge", 1), ("instagram", 1), ("cover_plan", 1), ("cover", 1),
     ]:
         assert kinds.count(kind) == expected, kind
 
@@ -143,7 +158,8 @@ def test_run_pipeline_v1_happy_path(wired_pipeline):
     assert last_fit < kinds.index("merge") < kinds.index("instagram")
 
     output_dir = os.path.join(run_path, settings.OUTPUT_PATH)
-    for name in ("story.txt", "research.md", "sources.json", "caption.txt", "characters.json", "scene_plan.json"):
+    for name in ("story.txt", "research.md", "sources.json", "caption.txt", "characters.json", "scene_plan.json",
+                 "cover.json", "cover.jpg", "script_plan.json"):
         assert os.path.exists(os.path.join(output_dir, name)), name
 
 
@@ -195,6 +211,65 @@ def test_failed_scene_clip_fails_the_run_instead_of_publishing(wired_pipeline, m
     assert "instagram" not in [call[0] for call in calls]
 
 
+def test_blocked_scene_clip_falls_back_to_the_still_and_the_run_completes(wired_pipeline, monkeypatch):
+    _, calls = wired_pipeline
+
+    def _blocked_clip(prompt, first_frame_path, seconds, output_path):
+        raise pipeline.VideoBlockedError("Input blocked: real people's likenesses")
+
+    monkeypatch.setattr(pipeline, "generate_scene_clip", _blocked_clip)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="blocked")
+
+    assert run_store.get_run("blocked").video_ready is True
+    assert any(call[0] == "still" for call in calls)
+
+
+def test_cover_comes_from_the_planned_scene_and_is_posted_and_shown_over_the_video(wired_pipeline):
+    tmp_path, calls = wired_pipeline
+
+    pipeline.run_pipeline_v1(topic="test", run_id="covers")
+
+    images = os.path.join(str(tmp_path), "covers", settings.IMAGE_PATH)
+    cover_call = next(c for c in calls if c[0] == "cover")
+    assert cover_call[1:] == (os.path.join(images, "scene_1.png"), "राजाको रहस्य", "रहस्य")
+    merge_call = next(c for c in calls if c[0] == "merge")
+    assert merge_call[2] == {"title": "राजाको रहस्य", "highlight": "रहस्य", "scene": 1}
+    instagram_call = next(c for c in calls if c[0] == "instagram")
+    assert instagram_call[4] == "https://example.com/cover.jpg"
+
+
+def test_a_cover_that_cannot_be_rendered_does_not_stop_the_post(wired_pipeline, monkeypatch):
+    _, calls = wired_pipeline
+
+    def _broken_cover(frame_path, title, highlight, output_path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(pipeline, "render_cover", _broken_cover)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="no-cover")
+
+    instagram_call = next(c for c in calls if c[0] == "instagram")
+    assert instagram_call[4] is None
+
+
+def test_without_auto_publish_the_run_stops_for_review(wired_pipeline, monkeypatch):
+    tmp_path, calls = wired_pipeline
+    monkeypatch.setattr(settings, "AUTO_PUBLISH", False)
+
+    result = pipeline.run_pipeline_v1(topic="test", run_id="review")
+
+    assert result is not None
+    assert "instagram" not in [call[0] for call in calls]
+    output_dir = os.path.join(str(tmp_path), "review", settings.OUTPUT_PATH)
+    for name in ("caption.txt", "cover.jpg"):
+        assert os.path.exists(os.path.join(output_dir, name)), name
+    record = run_store.get_run("review")
+    assert record.status == "video_ready"
+    assert record.video_ready is True
+    assert record.instagram_uploaded is False
+
+
 def test_run_pipeline_v1_resume_skips_completed_stages_and_does_not_republish(wired_pipeline):
     tmp_path, calls = wired_pipeline
 
@@ -208,7 +283,7 @@ def test_run_pipeline_v1_resume_skips_completed_stages_and_does_not_republish(wi
     # run was already fully published on the first call, so resuming it must not
     # post to Instagram again.
     kinds = [call[0] for call in calls]
-    for kind in ("audio", "sheet", "plan", "reference", "frame", "clip", "fit"):
+    for kind in ("audio", "sheet", "plan", "reference", "frame", "clip", "fit", "cover_plan", "cover"):
         assert kind not in kinds, kind
     assert "merge" in kinds
     assert "instagram" not in kinds
@@ -220,11 +295,11 @@ def test_run_pipeline_v1_recovers_and_retries_publish_after_earlier_failure(wire
     attempt_count = {"n": 0}
 
     class _FlakyInstagram:
-        def upload_media(self, media_url, caption, media_type):
+        def upload_media(self, media_url, caption, media_type, cover_url=None):
             attempt_count["n"] += 1
             if attempt_count["n"] == 1:
                 raise RuntimeError("simulated instagram outage")
-            calls.append(("instagram", media_url, caption, media_type))
+            calls.append(("instagram", media_url, caption, media_type, cover_url))
 
     monkeypatch.setattr(pipeline, "get_instagram_service", lambda: _FlakyInstagram())
 

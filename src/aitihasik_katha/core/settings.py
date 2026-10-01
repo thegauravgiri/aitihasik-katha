@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     CLIP_MODE: str = "mixed"
     # Research the story's subject on the web (Google Search grounding) in addition to the archive.
     USE_WEB_RESEARCH: bool = True
+    # Have the chat model check each draft against the topic and the research (and rewrite it)
+    # before the story is used.
+    USE_STORY_REVIEW: bool = True
+    # Post to Instagram as soon as the video is made. Off by default: a run stops after making the
+    # video, cover and caption so they can be checked, then `instagram upload --run-id` posts them.
+    AUTO_PUBLISH: bool = False
 
     # --- Google Cloud project / storage ---
     PROJECT_ID: str = ""

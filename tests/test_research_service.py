@@ -62,3 +62,22 @@ def test_empty_brief_is_an_error(monkeypatch):
 
     with pytest.raises(RuntimeError, match="empty brief"):
         research_service.research(topic="x")
+
+
+def test_an_overloaded_model_is_retried_with_a_long_wait(monkeypatch):
+    waits = []
+    monkeypatch.setattr("aitihasik_katha.utils.retry.time.sleep", waits.append)
+    overloaded = RuntimeError("503 UNAVAILABLE. This model is currently experiencing high demand.")
+    outcomes = [overloaded, overloaded, _response("a brief")]
+
+    def _generate(**kwargs):
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    client = SimpleNamespace(models=SimpleNamespace(generate_content=_generate))
+    monkeypatch.setattr(research_service, "get_genai_client", lambda: client)
+
+    assert research_service.research(topic="x").brief == "a brief"
+    assert waits == [60, 60]

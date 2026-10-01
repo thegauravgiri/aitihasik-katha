@@ -47,7 +47,7 @@ def _subject(topic: str | None, archive_passage: str | None) -> str:
 
 @retry(
     exceptions=(Exception,),
-    max_attempts=3,
+    max_attempts=4,
     delay_seconds=10,
     backoff_keywords=RATE_LIMIT_KEYWORDS,
     backoff_delay_seconds=60,

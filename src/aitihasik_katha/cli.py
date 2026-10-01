@@ -36,6 +36,13 @@ def build_parser() -> argparse.ArgumentParser:
         "(default: VIDEO_MODEL)",
     )
 
+    pipeline_cmd.add_argument(
+        "--publish",
+        action="store_true",
+        help="Post to Instagram as soon as the video is made (default: stop for review, then use "
+        "`instagram upload --run-id`; AUTO_PUBLISH=true in .env does the same)",
+    )
+
     ingest_cmd = subparsers.add_parser("ingest", help="Ingest one PDF or a directory")
     ingest_cmd.add_argument("--path", default=None, help="Single PDF path to ingest")
     ingest_cmd.add_argument("--language", default="en", choices=["en", "ne"], help="Language for single PDF ingestion")
@@ -86,6 +93,8 @@ def main() -> None:
             settings.CLIP_MODE = args.mode
         if args.video_model:
             settings.VIDEO_MODEL = args.video_model
+        if args.publish:
+            settings.AUTO_PUBLISH = True
         run_pipeline_v1(topic=args.topic, run_id=args.run_id)
         return
 

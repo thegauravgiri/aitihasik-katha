@@ -12,8 +12,8 @@ class _FakeInstagram:
     def __init__(self, calls):
         self._calls = calls
 
-    def upload_media(self, media_url, caption, media_type):
-        self._calls.append((media_url, caption, media_type))
+    def upload_media(self, media_url, caption, media_type, cover_url=None):
+        self._calls.append((media_url, caption, media_type, cover_url))
 
 
 def _make_completed_run(tmp_path, run_id, seed_registry=True):
@@ -115,3 +115,33 @@ def test_publish_all_pending_only_publishes_ready_unpublished_runs(wired_publish
 
     assert sorted(published) == ["ready-1", "ready-2"]
     assert len(calls["instagram"]) == 2
+
+
+def test_publish_run_posts_the_cover_image_when_there_is_one(wired_publish, monkeypatch):
+    tmp_path, calls = wired_publish
+    run_path = _make_completed_run(tmp_path, "run-cover")
+    (Path(run_path) / settings.OUTPUT_PATH / "cover.jpg").write_bytes(b"jpeg")
+    uploaded = []
+    monkeypatch.setattr(
+        pipeline, "upload_file_to_gcs", lambda bucket, src, dst: uploaded.append(dst) or "https://example.com/cover.jpg"
+    )
+
+    pipeline.publish_run("run-cover")
+
+    assert calls["instagram"][0][3] == "https://example.com/cover.jpg"
+    assert uploaded == [os.path.join(run_path, settings.OUTPUT_PATH, "cover.jpg")]
+
+
+def test_publish_run_still_posts_when_the_cover_cannot_be_uploaded(wired_publish, monkeypatch):
+    tmp_path, calls = wired_publish
+    run_path = _make_completed_run(tmp_path, "run-cover-fail")
+    (Path(run_path) / settings.OUTPUT_PATH / "cover.jpg").write_bytes(b"jpeg")
+
+    def _broken(bucket, src, dst):
+        raise OSError("network down")
+
+    monkeypatch.setattr(pipeline, "upload_file_to_gcs", _broken)
+
+    pipeline.publish_run("run-cover-fail")
+
+    assert calls["instagram"][0][3] is None

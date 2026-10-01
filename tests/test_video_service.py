@@ -60,3 +60,28 @@ def test_animate_still_makes_an_exact_length_silent_reel_clip(tmp_path, zoom_in)
         assert clip.audio is None
     finally:
         clip.close()
+
+
+def test_merge_shows_the_hook_title_over_the_first_seconds(tmp_path):
+    from aitihasik_katha.services.video_service import HOOK_TITLE_SECONDS, merge_video_clips
+
+    clips = []
+    for idx in range(2):
+        path = str(tmp_path / f"video_clip_{idx}.mp4")
+        ColorClip(size=(720, 1280), color=(20, 30, 60), duration=2).write_videofile(
+            path, fps=24, codec="libx264", logger=None
+        )
+        clips.append(path)
+    output = str(tmp_path / "final.mp4")
+
+    merge_video_clips(output, clip_filenames=clips, hook_title={"title": "राजा मर्छन् भने", "highlight": "मर्छन्"})
+
+    video = VideoFileClip(output)
+    try:
+        assert video.duration == pytest.approx(4, abs=0.2)
+        title_frame = video.get_frame(0.5)[100:420].astype(int)  # the title sits in the top fifth
+        later_frame = video.get_frame(HOOK_TITLE_SECONDS + 0.8)[100:420].astype(int)
+        assert title_frame.max() > 200  # white title text over a dark clip
+        assert later_frame.max() < 100  # gone again after the opening seconds
+    finally:
+        video.close()

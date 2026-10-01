@@ -5,6 +5,9 @@ frame, which is drawn from the characters' reference images.
 """
 from ..core.settings import settings
 from . import omni_video_service, veo_video_service
+from .omni_video_service import VideoBlockedError
+
+__all__ = ["VideoBlockedError", "clip_duration", "generate_scene_clip"]
 
 
 def clip_duration(seconds: float) -> int:

@@ -28,12 +28,14 @@ See more on Instagram: [@aitihasik_katha](https://instagram.com/aitihasik_katha)
 ## Features
 
 - **Research from two sources**: a local archive of Nepali history books and live web search.
-- **Scripts made to be watched**: 45 to 60 seconds, a strong hook, short lines and a clear payoff.
+- **Scripts made to be watched**: a planner picks the shortest length that tells the topic well (30 to 90 seconds), then the script gets a specific hook, fresh hooks along the way and an ending that loops back to the start.
+- **Checked before it's made**: every script is reviewed against your topic and the research, and rewritten if it drifts, is too long or has weak hooks or unsupported claims.
+- **Covers that get tapped**: a cover image with a bold hook title, also shown over the first seconds of the video.
 - **Consistent characters**: the same person looks the same in every scene. Real historical figures use their actual portraits when a free one exists.
 - **Three video styles**: images only, mixed, or full video.
 - **Choose your video model**: Google Veo or Gemini Omni, switched from settings.
 - **Nepali voice-over** with word-by-word subtitles.
-- **Instagram publishing**, with an easy way to retry failed runs.
+- **Review, then post**: a run stops with the video, cover and caption ready, and you post it when you're happy. Failed runs are easy to retry.
 
 ## How it works
 
@@ -43,7 +45,7 @@ See more on Instagram: [@aitihasik_katha](https://instagram.com/aitihasik_katha)
 4. **Create** an image for every scene, then animate it (or add a slow camera move).
 5. **Record** the voice-over and time the subtitles.
 6. **Edit** everything into one vertical video.
-7. **Publish** to Instagram (optional).
+7. **Review** the video, cover and caption, then **publish** to Instagram.
 
 Built with Google Gemini, Veo, Nano Banana 2, Google Cloud Text-to-Speech and Speech-to-Text, FAISS and MoviePy.
 
@@ -79,7 +81,13 @@ Then fill in `.env` and run:
 python -m aitihasik_katha run --topic "Battle of Kirtipur"
 ```
 
-The video is saved to `runs/<run-id>/output/final_video.mp4`.
+The run stops when the video is ready. Check `runs/<run-id>/output/` (`final_video.mp4`, `cover.jpg`, `caption.txt`), then post it:
+
+```bash
+python -m aitihasik_katha instagram upload --run-id <run-id>
+```
+
+To post automatically instead, add `--publish` to the run command or set `AUTO_PUBLISH=true`.
 
 ## Configuration
 
@@ -93,6 +101,8 @@ All settings live in `.env` (see `.env.example`). The main ones:
 | `IMAGE_MODEL` | Image model for characters and scenes |
 | `CLIP_MODE` | `image`, `mixed` or `video` |
 | `USE_WEB_RESEARCH` | Search the web for more facts (`true`/`false`) |
+| `USE_STORY_REVIEW` | Check each script against the topic and research, and rewrite it if needed (`true`/`false`) |
+| `AUTO_PUBLISH` | Post to Instagram as soon as the video is made (`true`/`false`, default `false`) |
 | `USE_HISTORICAL_PORTRAITS` | Use real portraits from Wikipedia (`true`/`false`) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to your Google Cloud service account file |
 | `PROJECT_ID`, `BUCKET` | Your Google Cloud project and storage bucket |

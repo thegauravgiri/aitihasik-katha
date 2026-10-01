@@ -53,20 +53,18 @@ class InstagramService:
             raise RuntimeError(f"Request failed: {details}") from exc
         return response.json()
 
-    def create_media_container(self, media_url, caption, media_type="REELS"):
+    def create_media_container(self, media_url, caption, media_type="REELS", cover_url=None):
         url = f"{self.BASE_URL}/{self.user_id}/media"
         media_type = media_type.strip().upper()
+        reel = {"media_type": "REELS", "video_url": media_url, "caption": caption}
+        # A cover image replaces the frame Instagram would otherwise pick from the video.
+        reel.update({"cover_url": cover_url} if cover_url else {"thumb_offset": 0})
         media_configs = {
             "IMAGE": {
                 "image_url": media_url,
                 "caption": caption,
             },
-            "REELS": {
-                "media_type": "REELS",
-                "video_url": media_url,
-                "caption": caption,
-                "thumb_offset": 0,
-            }
+            "REELS": reel,
         }
 
         if media_type not in media_configs:
@@ -92,10 +90,14 @@ class InstagramService:
         media_type="REELS",
         max_wait_seconds: int = 900,
         poll_interval_seconds: int = 60,
+        cover_url=None,
     ):
         media_container_id = self.create_media_container(
-            media_url, caption, media_type
+            media_url, caption, media_type, cover_url
         )
+        if not media_container_id and cover_url:
+            logger.warning("Instagram rejected the cover image; posting with an automatic cover instead")
+            media_container_id = self.create_media_container(media_url, caption, media_type)
 
         if not media_container_id:
             logger.error("Failed to create media container")
