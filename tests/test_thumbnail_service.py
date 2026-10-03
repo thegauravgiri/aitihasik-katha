@@ -77,3 +77,11 @@ def test_title_layer_fits_the_requested_width_and_uses_the_accent_colour():
     colours = {pixel[:3] for pixel in layer.getdata() if pixel[3] == 255}
     assert (0xF2, 0xB6, 0x32) in colours  # the highlighted word
     assert (255, 255, 255) in colours  # the rest of the title
+
+
+def test_a_cover_title_with_letters_from_another_script_falls_back(monkeypatch):
+    monkeypatch.setattr(thumbnail_service, "ask_json", lambda prompt: {"title": "दसैँ अधուրो कथा", "scene": 1})
+
+    cover = thumbnail_service.plan_cover(["एक दुई तीन", "चार"])
+
+    assert cover["title"] == "एक दुई तीन"

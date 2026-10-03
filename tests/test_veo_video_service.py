@@ -66,13 +66,46 @@ def test_generate_scene_clip_polls_until_done_and_saves_video(fast, monkeypatch,
     assert client.requests[0]["source"].image.image_bytes == b"png"
 
 
-def test_filtered_generation_is_retried_then_raises(fast, monkeypatch, tmp_path):
+def test_filtered_generation_is_a_block_and_is_not_retried(fast, monkeypatch, tmp_path):
     frame = tmp_path / "frame.png"
     frame.write_bytes(b"png")
-    _use(monkeypatch, _FakeClient([_operation(True, filtered=["unsafe"])] * 4))
+    client = _use(monkeypatch, _FakeClient([_operation(True, filtered=["unsafe"])] * 4))
 
-    with pytest.raises(RuntimeError, match="returned no video"):
+    with pytest.raises(veo_video_service.VideoBlockedError, match="returned no video"):
         veo_video_service.generate_scene_clip("prompt", str(frame), 4, str(tmp_path / "clip.mp4"))
+
+    assert len(client.requests) == 1
+
+
+def test_an_empty_result_without_filter_reasons_is_a_glitch_and_is_retried(fast, monkeypatch, tmp_path):
+    frame = tmp_path / "frame.png"
+    frame.write_bytes(b"png")
+    client = _use(monkeypatch, _FakeClient([_operation(True, videos=0)] * 4))
+
+    with pytest.raises(RuntimeError, match="returned no video") as caught:
+        veo_video_service.generate_scene_clip("prompt", str(frame), 4, str(tmp_path / "clip.mp4"))
+
+    assert not isinstance(caught.value, veo_video_service.VideoBlockedError)
+    assert len(client.requests) == 4
+
+
+def test_a_safety_error_from_the_operation_is_a_block(fast, monkeypatch, tmp_path):
+    frame = tmp_path / "frame.png"
+    frame.write_bytes(b"png")
+    _use(monkeypatch, _FakeClient([_operation(True, error={"message": "Request blocked due to safety violations"})]))
+
+    with pytest.raises(veo_video_service.VideoBlockedError):
+        veo_video_service.generate_scene_clip("prompt", str(frame), 4, str(tmp_path / "clip.mp4"))
+
+
+def test_a_model_can_be_chosen_per_call(fast, monkeypatch, tmp_path):
+    frame = tmp_path / "frame.png"
+    frame.write_bytes(b"png")
+    client = _use(monkeypatch, _FakeClient([_operation(True, videos=1)]))
+
+    veo_video_service.generate_scene_clip("prompt", str(frame), 4, str(tmp_path / "clip.mp4"), model="veo-3.1-fast-generate-preview")
+
+    assert client.requests[0]["model"] == "veo-3.1-fast-generate-preview"
 
 
 def test_operation_error_raises(fast, monkeypatch, tmp_path):

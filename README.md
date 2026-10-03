@@ -28,9 +28,12 @@ See more on Instagram: [@aitihasik_katha](https://instagram.com/aitihasik_katha)
 ## Features
 
 - **Research from two sources**: a local archive of Nepali history books and live web search.
+- **Plain, spoken Nepali**: written the way people talk, mixed with everyday English words, with no bookish language. Captions end sentences with the purna biram (।).
 - **Scripts made to be watched**: a planner picks the shortest length that tells the topic well (30 to 90 seconds), then the script gets a specific hook, fresh hooks along the way and an ending that loops back to the start.
 - **Checked before it's made**: every script is reviewed against your topic and the research, and rewritten if it drifts, is too long or has weak hooks or unsupported claims.
 - **Covers that get tapped**: a cover image with a bold hook title, also shown over the first seconds of the video.
+- **Real photos and footage first**: the planner marks scenes about real places, objects and people, and the app finds freely licensed photos and footage on Wikimedia Commons, picks the one that really shows it, and credits the photographer. Everything it finds is kept in a library (`data/media_library/`) and reused by later videos.
+- **A documentary look**: dark, cinematic 2K frames for reenacted scenes, one film grade over every shot, and a camera move on every photo.
 - **Consistent characters**: the same person looks the same in every scene. Real historical figures use their actual portraits when a free one exists.
 - **Three video styles**: images only, mixed, or full video.
 - **Choose your video model**: Google Veo or Gemini Omni, switched from settings.
@@ -102,6 +105,9 @@ All settings live in `.env` (see `.env.example`). The main ones:
 | `CLIP_MODE` | `image`, `mixed` or `video` |
 | `USE_WEB_RESEARCH` | Search the web for more facts (`true`/`false`) |
 | `USE_STORY_REVIEW` | Check each script against the topic and research, and rewrite it if needed (`true`/`false`) |
+| `USE_REAL_MEDIA` | Use real photos and footage from Wikimedia Commons where they exist (`true`/`false`) |
+| `REAL_MEDIA_ALLOW_SHAREALIKE` | Also use CC BY-SA media (`false` by default, because share-alike may extend to your video) |
+| `IMAGE_SIZE` | Resolution of generated frames: `1K`, `2K` or `4K` |
 | `AUTO_PUBLISH` | Post to Instagram as soon as the video is made (`true`/`false`, default `false`) |
 | `USE_HISTORICAL_PORTRAITS` | Use real portraits from Wikipedia (`true`/`false`) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to your Google Cloud service account file |
@@ -139,6 +145,10 @@ python -m aitihasik_katha instagram upload --all
 ```
 
 A resumed run reuses everything it already made, and a published run is never posted twice.
+
+### Background music
+
+Put royalty-free tracks (`.mp3`, `.wav` or `.m4a`) in `data/music/`. One is picked at random and mixed quietly under the voice-over. Use only music you have the rights to.
 
 ### Add history books
 

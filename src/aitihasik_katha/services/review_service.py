@@ -20,7 +20,8 @@ Return ONLY a JSON object with this shape:
   "answers_topic": true or false,
   "unsupported_claims": ["..."],
   "weak_hook": true or false,
-  "hook_issue": "..."
+  "hook_issue": "...",
+  "confusing_parts": ["..."]
 }}
 
 - answers_topic: true only if the narration is about the topic and answers what it asks. If the topic
@@ -28,9 +29,15 @@ Return ONLY a JSON object with this shape:
 - unsupported_claims: specific names, dates, numbers or events in the narration that the research
   brief does not support, and legends stated as fact. Quote each briefly. Use an empty list if there
   are none, or if the research brief is "(none)".
-- weak_hook: true if the first sentence is vague scenery, a generic "imagine..." or "what if..." opener,
-  or background information instead of one specific, surprising fact.
+- weak_hook: true if the first sentence would not make a stranger stop scrolling: vague scenery, a generic
+  "imagine..." or "what if..." opener, background information, or a question that only restates the
+  topic. A strong hook is one specific, surprising, concrete fact or event that the viewer needs
+  explained. Be strict: when in doubt, answer true.
 - hook_issue: one short sentence on what is wrong with the hook, or an empty string.
+- confusing_parts: put yourself in the place of a 16-year-old in Kathmandu who knows no history and hears
+  this once at normal speed. Quote any sentence they would not understand, that does not follow from the
+  sentence before it, that contradicts another sentence, that repeats a point, or that uses a word they
+  would have to look up. Use an empty list if everything is clear.
 """
 
 
@@ -40,6 +47,11 @@ class Review:
     unsupported_claims: list[str] = field(default_factory=list)
     weak_hook: bool = False
     hook_issue: str = ""
+    confusing_parts: list[str] = field(default_factory=list)
+
+
+def _strings(value) -> list[str]:
+    return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
 
 
 @retry(exceptions=(Exception,), max_attempts=2, delay_seconds=5)
@@ -47,10 +59,10 @@ def review_story(topic: str | None, story: str, research_brief: str) -> Review:
     data = ask_json(REVIEW_PROMPT.format(topic=topic or "(none)", research=research_brief or "(none)", story=story))
     if not isinstance(data, dict):
         raise ValueError(f"Review has unexpected shape: {data!r}")
-    claims = data.get("unsupported_claims") or []
     return Review(
         answers_topic=bool(data.get("answers_topic", True)),
-        unsupported_claims=[str(c).strip() for c in claims if str(c).strip()] if isinstance(claims, list) else [],
+        unsupported_claims=_strings(data.get("unsupported_claims")),
         weak_hook=bool(data.get("weak_hook", False)),
         hook_issue=str(data.get("hook_issue") or "").strip(),
+        confusing_parts=_strings(data.get("confusing_parts")),
     )

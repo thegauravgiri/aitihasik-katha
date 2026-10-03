@@ -57,3 +57,24 @@ def title_layer(title: str, highlight: str | None, max_width: int, max_font_size
             draw.text((x, y), word, font=font, fill=colour, stroke_width=stroke, stroke_fill=OUTLINE)
             x += font.getlength(word) + space
     return layer
+
+
+def plain_layer(text: str, max_width: int, font_size: int, fill: str = WHITE, stroke: int = 3) -> Image.Image:
+    """One centred line (or two, if it must wrap) of text with a dark outline, as a transparent RGBA image."""
+    words = text.split()
+    while True:
+        font = _font(font_size)
+        space = font.getlength(" ")
+        lines = _wrap(words, font, max_width, space)
+        if (len(lines) <= 2 and all(font.getlength(w) <= max_width for w in words)) or font_size <= 14:
+            break
+        font_size = int(font_size * 0.92)
+    line_height = int(font_size * 1.3)
+    pad = stroke * 2
+    layer = Image.new("RGBA", (max_width + 2 * pad, line_height * len(lines) + 2 * pad), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    for row, line in enumerate(lines):
+        joined = " ".join(line)
+        x = pad + (max_width - font.getlength(joined)) / 2
+        draw.text((x, pad + row * line_height), joined, font=font, fill=fill, stroke_width=stroke, stroke_fill=OUTLINE)
+    return layer

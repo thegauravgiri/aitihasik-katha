@@ -5,72 +5,38 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from aitihasik_katha.core.settings import settings
 from aitihasik_katha.core.logging import get_logger
+from aitihasik_katha.utils.nepali import nepali_punctuation, stray_characters
 from aitihasik_katha.utils.retry import retry
 
 
-CAPTION_PROMPT = """You are an expert Instagram growth strategist and viral content writer.
+CAPTION_PROMPT = """You write the Instagram caption for a short Nepal-history video, for a Nepali audience.
 
-Your task is to generate a HIGH-PERFORMING Instagram caption based on the given story or script.
+LANGUAGE
+- Everyday spoken Nepali in Devanagari, the way people talk to friends, mixed naturally with common English
+  words (king, palace, festival, secret, real story, share, save). No bookish or Sanskritised words:
+  never "किंवदन्ती", "जनविश्वास", "संस्थागत", "दर्शाउँछ", "विराजमान"; say "भनिन्छ", "मान्छेले विश्वास
+  गर्छन्", "रोक", "देखाउँछ".
+- End Nepali sentences with "।", never ".". Use "?" for questions.
+- Hashtags are in English.
 
-Follow these rules strictly to align with the latest Instagram algorithm (2025–2026):
+STRUCTURE
+1. HOOK - the first line, at most 90 characters so it shows in full before Instagram's "more" cut: the
+   most shocking concrete fact from the story, in plain words. It makes people stop scrolling.
+2. SHORT STORY - 2 to 4 short lines that tell the heart of the video again in a way that makes people want
+   to watch. Do not add facts that are not in the story. Mark anything that is only a legend as
+   "भनिन्छ".
+3. ONE QUESTION - a specific question about this story people can answer in a few words (for example
+   "तपाईं भए ढोका खोल्नुहुन्थ्यो?"). Never a generic "तपाईंलाई के लाग्छ?".
+4. SEND LINE - one line naming a specific kind of person to send it to, tied to this story (for example
+   "यो भिडियो दसैँमा पनि घर नफर्कने साथीलाई पठाउनुहोस्।").
+5. FOLLOW LINE - one short, natural line that tells people why to follow: "हरेक हप्ता नेपालको एउटा
+   अनसुनेको इतिहास चाहिन्छ भने फलो गर्नुहोस्।" Do not sound salesy.
+6. HASHTAGS - 4 to 6 relevant English hashtags at the end, mixing niche and broad.
 
-1. HOOK (First Line is Critical)
-- Start with a powerful, curiosity-driven or emotional hook, at most 90 characters, so it shows in full
-  before Instagram's "more" cut.
-- Make people STOP scrolling within 1–2 seconds. Use the most shocking concrete fact from the story.
-- Keep it short, punchy, and relatable.
+FORMAT
+- Line breaks between parts. No large blocks of text.
 
-2. STORY / VALUE
-- Convert the provided story into engaging storytelling or value-driven content.
-- Make it human, emotional, or insightful.
-- Use natural language (no robotic or keyword stuffing).
-- Maintain clarity and flow.
-
-3. ENGAGEMENT TRIGGERS
-- Ask ONE specific question about this story that people can disagree on or answer in a few words
-  (for example "Would you have opened the gates?" or "Which of these two kings was right?").
-  Never a generic "What do you think?".
-- Aim to increase comments, shares, and saves.
-
-4. SHAREABILITY OPTIMIZATION
-- Sends to friends are the strongest signal on Instagram. Include one line that names a specific kind of
-  person to send it to, tied to this story.
-  Examples:
-  “Send this to the friend who still thinks Dashain is only about food.”
-  “Send this to someone from Patan.”
-
-5. CALL TO ACTION (CTA)
-- Include a soft CTA such as:
-  - “Save this”
-  - “Share this”
-  - “Follow for more”
-- Do NOT sound salesy.
-
-6. SEO + KEYWORDS
-- Naturally include relevant keywords from the story.
-- Make the caption searchable and context-rich.
-
-7. HASHTAGS (Modern Strategy)
-- Add 4–6 highly relevant hashtags.
-- Mix niche + broad tags.
-- Place hashtags at the end.
-
-8. TONE
-- Match tone to content (emotional, funny, motivational, educational, etc.)
-- Keep it authentic, not generic.
-
-9. LENGTH
-- Adapt length based on story:
-  - Short for punchy content
-  - Longer for storytelling
-
-10. FORMAT
-- Use line breaks for readability.
-- Avoid large blocks of text.
-
-LANGUAGE: ALWAYS ENGLISH, Despite the story being in other language.
-
-Output ONLY the final Instagram caption."""
+Output ONLY the final caption."""
 
 logger = get_logger(__name__)
 
@@ -95,14 +61,16 @@ def generate_caption(story) -> str:
         HumanMessage(story)
     ]
 
-    response = _invoke(messages)
-    caption = response.content
-    if isinstance(caption, list):
-        for item in caption:
-            if item.get("type") == "text":
-                return item.get("text")
-    return str(caption)
-
-
-if __name__ == "__main__":
-    logger.info(generate_caption("a man with passion"))
+    caption = ""
+    for attempt in range(3):
+        response = _invoke(messages)
+        content = response.content
+        if isinstance(content, list):
+            content = next((item.get("text") for item in content if item.get("type") == "text"), "")
+        caption = nepali_punctuation(str(content).strip())
+        stray = stray_characters(caption)
+        if not stray:
+            return caption
+        logger.warning("Caption has stray letters %s (attempt %d); asking again", " ".join(stray), attempt + 1)
+    # Still glitched after three tries: drop only the stray letters rather than post them.
+    return "".join(ch for ch in caption if ch not in stray)

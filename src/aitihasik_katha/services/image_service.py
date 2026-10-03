@@ -35,7 +35,7 @@ def generate_image(prompt: str, reference_pngs: list[bytes] = ()) -> bytes:
         contents=[*contents, prompt],
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE"],
-            image_config=types.ImageConfig(aspect_ratio="9:16"),
+            image_config=types.ImageConfig(aspect_ratio="9:16", image_size=settings.IMAGE_SIZE),
         ),
     )
     candidate = response.candidates[0] if response.candidates else None
