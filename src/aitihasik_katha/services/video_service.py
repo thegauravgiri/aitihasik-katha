@@ -20,6 +20,7 @@ from moviepy.video.tools.subtitles import file_to_subtitles
 
 from ..core.logging import get_logger
 from ..core.settings import settings
+from ..utils.nepali import nepali_punctuation
 from .title_card import plain_layer, title_layer
 
 
@@ -27,7 +28,7 @@ logger = get_logger(__name__)
 
 
 def format_text(text: str) -> str:
-    text = text.strip().replace("\n", " ")
+    text = nepali_punctuation(text).strip().replace("\n", " ")
     words = text.split()
     formatted_text = ""
     while len(words) > 5:
@@ -172,7 +173,7 @@ def fit_clip_to_duration(
 
 def _build_reels_caption_clip(text: str, start_time: float, end_time: float, video_w: int, video_h: int):
     duration = max(0.1, float(end_time) - float(start_time))
-    caption_text = format_text(text).upper()
+    caption_text = format_text(nepali_punctuation(text)).upper()
     caption_font = str(Path("data/fonts/NotoSerifDevanagari-ExtraBold.ttf"))
 
     font_size = max(48, int(video_w * 0.076))
@@ -345,7 +346,7 @@ def merge_video_clips(
     if subtitles:
         subtitle_items = file_to_subtitles(subtitles) if isinstance(subtitles, (str, os.PathLike)) else subtitles
         overlays = [
-            _build_reels_caption_clip(text, start, end, final_clip.w, final_clip.h)
+            _build_reels_caption_clip(nepali_punctuation(text), start, end, final_clip.w, final_clip.h)
             for (start, end), text in subtitle_items
         ]
     should_show_hook = settings.SHOW_HOOK_TITLE if show_hook_title is None else show_hook_title

@@ -39,7 +39,7 @@ BOOKISH_WORDS = {
 }
 
 _DEVANAGARI = r"ऀ-ॿ"
-_SENTENCE_END = re.compile(rf"(?<=[{_DEVANAGARI}])\.(?=\s|$)")
+_SENTENCE_END = re.compile(rf"(?<=[{_DEVANAGARI}])\s*\.+(?=\s|$)")
 
 
 def nepali_punctuation(text: str) -> str:

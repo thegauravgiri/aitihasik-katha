@@ -3,6 +3,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from ..utils.nepali import nepali_punctuation
+
 FONT_PATH = Path("data/fonts/NotoSerifDevanagari-ExtraBold.ttf")
 WHITE, ACCENT, OUTLINE = "#FFFFFF", "#F2B632", "#0B1020"
 MAX_LINES = 3
@@ -32,6 +34,7 @@ def title_layer(title: str, highlight: str | None, max_width: int, max_font_size
     """The title as a transparent RGBA image: white words with a dark outline, the highlight
     word in the accent colour, wrapped to at most three centred lines no wider than `max_width`.
     The font shrinks until it fits."""
+    title = nepali_punctuation(title)
     words = title.split()
     font_size = max_font_size
     while True:
@@ -61,6 +64,7 @@ def title_layer(title: str, highlight: str | None, max_width: int, max_font_size
 
 def plain_layer(text: str, max_width: int, font_size: int, fill: str = WHITE, stroke: int = 3) -> Image.Image:
     """One centred line (or two, if it must wrap) of text with a dark outline, as a transparent RGBA image."""
+    text = nepali_punctuation(text)
     words = text.split()
     while True:
         font = _font(font_size)

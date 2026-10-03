@@ -20,6 +20,13 @@ def test_format_text_short_text_is_not_wrapped():
     assert result == " a b c "
 
 
+def test_format_text_converts_full_stops_after_nepali_to_purna_biram():
+    result = format_text("खान्छन्.")
+    assert result == " खान्छन्। "
+    result = format_text("यो राम्रो छ. अर्को वाक्य छ.")
+    assert result == " यो राम्रो छ। अर्को वाक्य \n छ। "
+
+
 @pytest.fixture
 def landscape_clip(tmp_path):
     """A 2s 16:9 clip, like the model sometimes returns."""

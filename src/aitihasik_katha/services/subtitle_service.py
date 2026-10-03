@@ -6,6 +6,7 @@ from google.cloud.speech_v2.types import cloud_speech
 
 from ..core.settings import settings
 from ..utils.gcs import delete_file_from_gcs, upload_file_to_gcs
+from ..utils.nepali import nepali_punctuation
 from ..utils.retry import retry
 
 
@@ -59,7 +60,7 @@ def get_subtitle(speech_to_text_response) -> list[tuple[tuple[float, float], str
         for words in result.alternatives[0].words:
             start_time = words.start_offset.total_seconds()
             end_time = words.end_offset.total_seconds()
-            subs.append(((start_time, end_time), words.word))
+            subs.append(((start_time, end_time), nepali_punctuation(words.word)))
     return subs
 
 if __name__ == "__main__":

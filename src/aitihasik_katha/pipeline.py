@@ -29,6 +29,7 @@ from .services.thumbnail_service import plan_cover, render_cover
 from .services.video_service import MOTIONS, animate_still, fit_clip_to_duration, merge_video_clips, real_video_clip
 from .storage import run_store
 from .utils.gcs import upload_file_to_gcs, upload_folder_to_gcs
+from .utils.nepali import nepali_punctuation
 
 
 logger = get_logger(__name__)
@@ -66,8 +67,16 @@ def _generate_audio_stage(
         generate_audio(story, audio_output_filepath)
 
     total_audio_duration = get_audio_duration(audio_output_filepath)
-    transcription = generate_transcription(audio_output_filepath)
-    subtitles = get_subtitle(transcription)
+    subs_path = Path(run_path) / settings.OUTPUT_PATH / "subtitles.json"
+    if subs_path.exists():
+        logger.info("Reusing existing subtitles at %s", subs_path)
+        raw_subs = json.loads(subs_path.read_text(encoding="utf-8"))
+        subtitles = [((float(item[0][0]), float(item[0][1])), nepali_punctuation(item[1])) for item in raw_subs]
+    else:
+        transcription = generate_transcription(audio_output_filepath)
+        subtitles = get_subtitle(transcription)
+        subs_path.parent.mkdir(parents=True, exist_ok=True)
+        subs_path.write_text(json.dumps(subtitles, ensure_ascii=False, indent=2), encoding="utf-8")
     return audio_output_filepath, total_audio_duration, subtitles
 
 

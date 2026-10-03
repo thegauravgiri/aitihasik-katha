@@ -3,6 +3,10 @@ from aitihasik_katha.utils.nepali import bookish_words, long_sentences, nepali_p
 
 def test_full_stops_after_nepali_become_purna_biram():
     assert nepali_punctuation("यो राम्रो छ. अर्को वाक्य छ.") == "यो राम्रो छ। अर्को वाक्य छ।"
+    assert nepali_punctuation("खान्छन्.") == "खान्छन्।"
+    assert nepali_punctuation("बस्छन् .") == "बस्छन्।"
+    assert nepali_punctuation("बस्छन्..") == "बस्छन्।"
+    assert nepali_punctuation("४.५ प्रतिशत भयो.") == "४.५ प्रतिशत भयो।"
 
 
 def test_full_stops_in_english_numbers_and_links_are_left_alone():
