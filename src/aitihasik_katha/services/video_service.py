@@ -364,7 +364,7 @@ def merge_video_clips(
         tracks = [final_clip.audio, bgm_clip] if final_clip.audio else [bgm_clip]
         final_clip = final_clip.with_audio(CompositeAudioClip(tracks))
 
-    final_clip.write_videofile(output_path, codec="libx264", fps=24)
+    final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24)
 
     final_clip.close()
     for clip in video_clips:
