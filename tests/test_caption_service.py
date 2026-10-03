@@ -27,7 +27,7 @@ def test_the_prompt_asks_for_plain_nepali_a_specific_question_a_send_line_and_a_
 
     assert "Everyday spoken Nepali" in prompt
     assert "End Nepali sentences with" in prompt
-    assert "ONE QUESTION" in prompt and "SEND LINE" in prompt and "FOLLOW LINE" in prompt
+    assert "ONE QUESTION" in prompt and "SEND LINE" in prompt and "SAVE LINE" in prompt and "FOLLOW LINE" in prompt
     assert "at most 90 characters" in prompt
 
 

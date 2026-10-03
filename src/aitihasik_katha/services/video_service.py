@@ -175,62 +175,53 @@ def _build_reels_caption_clip(text: str, start_time: float, end_time: float, vid
     caption_text = format_text(text).upper()
     caption_font = str(Path("data/fonts/NotoSerifDevanagari-ExtraBold.ttf"))
 
-    font_size = max(52, int(video_w * 0.082))
-    max_text_width = int(video_w * 0.9)
-    caption_box_h = int(video_h * 0.24)
+    font_size = max(48, int(video_w * 0.076))
+    max_text_width = int(video_w * 0.88)
+    caption_box_h = int(video_h * 0.22)
 
     text_kwargs = dict(
         text=caption_text,
         method="caption",
         size=(max_text_width, caption_box_h),
         font=caption_font,
-        margin=(20, 20),
+        margin=(16, 16),
         font_size=font_size,
         text_align="center",
         horizontal_align="center",
         vertical_align="center",
         transparent=True,
-        interline=8,
+        interline=6,
         duration=duration,
     )
 
-    shadow = TextClip(**text_kwargs, color="black", stroke_color="black", stroke_width=8).with_opacity(0.28).with_position((2, 3))
-    glow_halo = TextClip(**text_kwargs, color="#fff8d6", stroke_color="#fff8d6", stroke_width=16).with_opacity(0.18)
-    glow_outer = TextClip(**text_kwargs, color="#fff7b0", stroke_color="#fff7b0", stroke_width=12).with_opacity(0.30)
-    glow_inner = TextClip(**text_kwargs, color="#fffdf2", stroke_color="#ffffff", stroke_width=9).with_opacity(0.22)
+    # Clean high-contrast documentary typography: crisp dark drop shadow + bold white text with sharp dark outline
+    shadow = TextClip(**text_kwargs, color="black", stroke_color="black", stroke_width=6).with_opacity(0.40).with_position((3, 3))
     main = TextClip(**text_kwargs, color="#ffffff", stroke_color="#0b1020", stroke_width=4)
 
     def _bump_scale(t: float) -> float:
-        intro_duration = 0.22
-        settled_scale = 1.06
-        if t >= intro_duration:
-            return settled_scale
-        p = t / intro_duration
-        base_lift = (settled_scale - 1.0) * p
-        overshoot = 0.10 * math.sin(math.pi * p) * math.exp(-3.8 * p)
-        return 1.0 + base_lift + overshoot
+        pop_duration = 0.12
+        if t >= pop_duration:
+            return 1.0
+        p = t / pop_duration
+        return 0.95 + 0.05 * p
 
-    pad = max(24, int(font_size * 0.9))
-    layer_w = max(shadow.w, glow_halo.w, glow_outer.w, glow_inner.w, main.w)
-    layer_h = max(shadow.h, glow_halo.h, glow_outer.h, glow_inner.h, main.h)
+    pad = max(20, int(font_size * 0.8))
+    layer_w = max(shadow.w, main.w)
+    layer_h = max(shadow.h, main.h)
     canvas_size = (layer_w + 2 * pad, layer_h + 2 * pad)
 
     animated_caption = CompositeVideoClip(
         [
             shadow.with_position(("center", "center")),
-            glow_halo.with_position(("center", "center")),
-            glow_outer.with_position(("center", "center")),
-            glow_inner.with_position(("center", "center")),
             main.with_position(("center", "center")),
         ],
         size=canvas_size,
         bg_color=None,
     ).with_effects([vfx.Resize(_bump_scale)])
 
-    max_scale = 1.16
-    reserved_h = int(animated_caption.h * max_scale)
-    target_center_y = int(video_h * 0.62)
-    caption_y = max(0, target_center_y - (reserved_h // 2))
+    # Position in the lower-middle safe zone (above native social captions and controls)
+    target_center_y = int(video_h * 0.65)
+    caption_y = max(0, target_center_y - (animated_caption.h // 2))
 
     full_frame_caption = CompositeVideoClip(
         [animated_caption.with_position(("center", caption_y))],
@@ -271,6 +262,34 @@ def _build_hook_title_clip(title: str, highlight: str | None, video_w: int, vide
     return clip.with_effects([vfx.CrossFadeOut(0.35)])
 
 
+def apply_cinematic_transitions(
+    clips: list, style: str | None = None, duration: float | None = None
+) -> list:
+    """Apply smooth transitions between consecutive scene clips.
+
+    'dissolve' (or 'dip_to_black') applies a soft fade-out and fade-in at scene boundaries,
+    eliminating jarring jump cuts while preserving exact clip timing and audio synchronization.
+    """
+    style = settings.TRANSITION_STYLE if style is None else style
+    duration = settings.TRANSITION_DURATION if duration is None else duration
+
+    if style in ("none", "", None) or duration <= 0 or len(clips) <= 1:
+        return clips
+
+    result = []
+    n = len(clips)
+    for i, clip in enumerate(clips):
+        effects = []
+        clip_dur = getattr(clip, "duration", None)
+        eff_dur = min(duration, clip_dur / 2.5) if clip_dur else duration
+        if i > 0 and style in ("dissolve", "dip_to_black"):
+            effects.append(vfx.FadeIn(eff_dur))
+        if i < n - 1 and style in ("dissolve", "dip_to_black"):
+            effects.append(vfx.FadeOut(eff_dur))
+        result.append(clip.with_effects(effects) if effects else clip)
+    return result
+
+
 def merge_video_clips(
     output_path: str | None = None,
     voice_over: str | None = None,
@@ -281,6 +300,8 @@ def merge_video_clips(
     hook_title: dict | None = None,
     branding: bool = False,
     show_hook_title: bool | None = None,
+    transition_style: str | None = None,
+    transition_duration: float | None = None,
 ) -> str | None:
     if clip_filenames:
         videos = [v for v in clip_filenames if v.lower().endswith(".mp4")]
@@ -311,6 +332,7 @@ def merge_video_clips(
         logger.warning("No valid video clips could be loaded. Skipping merge")
         return None
 
+    video_clips = apply_cinematic_transitions(video_clips, style=transition_style, duration=transition_duration)
     final_clip = concatenate_videoclips(video_clips)
     voice_clip = None
     bgm_clip = None

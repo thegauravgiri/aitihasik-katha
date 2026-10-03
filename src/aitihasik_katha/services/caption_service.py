@@ -29,9 +29,11 @@ STRUCTURE
    "तपाईं भए ढोका खोल्नुहुन्थ्यो?"). Never a generic "तपाईंलाई के लाग्छ?".
 4. SEND LINE - one line naming a specific kind of person to send it to, tied to this story (for example
    "यो भिडियो दसैँमा पनि घर नफर्कने साथीलाई पठाउनुहोस्।").
-5. FOLLOW LINE - one short, natural line that tells people why to follow: "हरेक हप्ता नेपालको एउटा
+5. SAVE LINE - one short line giving viewers a clear reason to save/bookmark this video for later
+   (for example "नेपालको यो अनौठो इतिहास सम्झिराख्न अहिले नै save गरिहाल्नुस्।" or "गोरखा जाँदा नबिर्सिन यो भिडियो save गर्नुहोस्।").
+6. FOLLOW LINE - one short, natural line that tells people why to follow: "हरेक हप्ता नेपालको एउटा
    अनसुनेको इतिहास चाहिन्छ भने फलो गर्नुहोस्।" Do not sound salesy.
-6. HASHTAGS - 4 to 6 relevant English hashtags at the end, mixing niche and broad.
+7. HASHTAGS - 4 to 6 relevant English hashtags at the end, mixing niche and broad.
 
 FORMAT
 - Line breaks between parts. No large blocks of text.

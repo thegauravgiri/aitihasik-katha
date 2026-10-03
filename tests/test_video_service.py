@@ -268,3 +268,50 @@ def test_there_is_no_corner_mark_by_default_but_the_follow_tag_still_shows(tmp_p
         assert video.get_frame(video.duration - 0.8)[1000:1100, 60:660].max() > 150  # follow line at the end
     finally:
         video.close()
+
+
+def test_apply_cinematic_transitions_preserves_total_duration(tmp_path):
+    from aitihasik_katha.services.video_service import apply_cinematic_transitions, concatenate_videoclips
+
+    c1 = ColorClip(size=(100, 100), color=(200, 20, 20), duration=2.0)
+    c2 = ColorClip(size=(100, 100), color=(20, 200, 20), duration=2.0)
+    c3 = ColorClip(size=(100, 100), color=(20, 20, 200), duration=2.0)
+
+    transitioned = apply_cinematic_transitions([c1, c2, c3], style="dissolve", duration=0.25)
+    assert len(transitioned) == 3
+
+    final = concatenate_videoclips(transitioned)
+    try:
+        assert final.duration == pytest.approx(6.0, abs=0.01)
+        # Verify boundary transition: c1 fades at t=1.95, c2 fades in at t=2.05
+        mid_before = final.get_frame(1.95)
+        assert mid_before[50, 50, 0] < 200  # faded down
+        mid_after = final.get_frame(2.05)
+        assert mid_after[50, 50, 1] < 200  # fading in
+    finally:
+        final.close()
+        for c in (c1, c2, c3):
+            c.close()
+
+
+def test_apply_cinematic_transitions_disabled_when_style_is_none():
+    from aitihasik_katha.services.video_service import apply_cinematic_transitions
+
+    c1 = ColorClip(size=(100, 100), color=(200, 20, 20), duration=2.0)
+    c2 = ColorClip(size=(100, 100), color=(20, 200, 20), duration=2.0)
+
+    result = apply_cinematic_transitions([c1, c2], style="none")
+    assert result == [c1, c2]
+    c1.close()
+    c2.close()
+
+
+def test_build_reels_caption_clip_produces_clean_subtitle():
+    from aitihasik_katha.services.video_service import _build_reels_caption_clip
+
+    caption = _build_reels_caption_clip("गोरखा दरबार", start_time=0.5, end_time=2.0, video_w=720, video_h=1280)
+    try:
+        assert caption.duration == pytest.approx(1.5, abs=0.05)
+        assert tuple(caption.size) == (720, 1280)
+    finally:
+        caption.close()
