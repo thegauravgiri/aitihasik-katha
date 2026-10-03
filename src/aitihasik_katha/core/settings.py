@@ -77,9 +77,10 @@ class Settings(BaseSettings):
     # A small handle shown in the corner of the video. Off by default (empty).
     CHANNEL_HANDLE: str = ""
     FOLLOW_TAG: str = "फलो गर्नुस् — हरेक हप्ता नेपालको एउटा अनसुनेको इतिहास"
-    # Cinematic transition between scenes: "dissolve", "dip_to_black", or "none".
-    TRANSITION_STYLE: str = "dissolve"
-    TRANSITION_DURATION: float = 0.25
+    # Transition style between scenes: "none" (clean cinematic straight cuts - recommended for reels),
+    # "crossfade", or "dip_to_black".
+    TRANSITION_STYLE: str = "none"
+    TRANSITION_DURATION: float = 0.20
     # Royalty-free tracks (mp3/wav/m4a) dropped in this folder are mixed in quietly under the voice-over.
     BACKGROUND_MUSIC_DIR: str = "data/music"
     BACKGROUND_MUSIC_VOLUME: float = 0.10
