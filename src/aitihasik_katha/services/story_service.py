@@ -112,6 +112,11 @@ Your previous draft:
 Fix these problems:
 {feedback}
 
+IMPORTANT RULES FOR THIS REWRITE:
+- If a sentence was flagged as an unsupported claim or unconfirmed fact, REMOVE that sentence entirely from the story or replace it only with facts confirmed in the research brief. Do NOT repeat or rephrase the unconfirmed claim.
+- If a word was flagged as bookish, replace it with the suggested everyday spoken word.
+- Keep the exact word count within the planned budget.
+
 Write the full corrected narration again, following every rule above."""
 
 
