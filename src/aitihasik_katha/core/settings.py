@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     INSTAGRAM_USER_ID: str = ""
 
     # Look of the finished video ---
+    # Visual generation style for scenes, frames, and characters:
+    # "realistic", "animated", "disney", "anime", "dark_fantasy", "oil_painting", "graphic_novel", "claymation", "vintage_documentary"
+    VISUAL_STYLE: str = "realistic"
     # Grain, vignette and a touch of contrast on every shot so generated frames and real photos
     # look like one documentary.
     FILM_LOOK: bool = True

@@ -33,8 +33,8 @@ def wired_pipeline(tmp_path, monkeypatch):
             f.write("fake-audio")
         return output_path
 
-    def _build_character_sheet(story):
-        calls.append(("sheet",))
+    def _build_character_sheet(story, visual_style=None):
+        calls.append(("sheet", visual_style))
         return {
             "style": "Malla-era Kathmandu",
             "supporting": "soldiers in period dress",
@@ -48,10 +48,10 @@ def wired_pipeline(tmp_path, monkeypatch):
             {"characters": [], "shot": "city", "clip": "image", "real_search": "Kathmandu Durbar Square"},
         ]
 
-    def _resolve_reference(character, style, image_path):
+    def _resolve_reference(character, style, image_path, visual_style=None):
         # Like the real one: an existing reference is reused rather than re-fetched.
         if not os.path.exists(image_path):
-            calls.append(("reference", character["id"]))
+            calls.append(("reference", character["id"], visual_style))
             with open(image_path, "w", encoding="utf-8") as f:
                 f.write("fake-reference")
         return Reference(
@@ -467,3 +467,30 @@ def test_invalid_clip_mode_is_rejected_before_any_work(wired_pipeline, monkeypat
     with pytest.raises(ValueError, match="CLIP_MODE"):
         pipeline.run_pipeline_v1(topic="test", run_id="bad-mode")
     assert calls == []
+
+
+def test_pipeline_accepts_visual_style(wired_pipeline):
+    tmp_path, calls = wired_pipeline
+    pipeline.run_pipeline_v1(topic="test", run_id="anime-run", visual_style="anime")
+
+    # Sheet and reference calls should receive the requested visual style
+    sheet_calls = [c for c in calls if c[0] == "sheet"]
+    assert len(sheet_calls) == 1
+    assert sheet_calls[0][1] == "anime"
+
+    ref_calls = [c for c in calls if c[0] == "reference"]
+    assert len(ref_calls) == 1
+    assert ref_calls[0][2] == "anime"
+
+    # Run store should record visual_style
+    record = run_store.get_run("anime-run")
+    assert record is not None
+    assert record.visual_style == "anime"
+
+
+def test_pipeline_rejects_invalid_visual_style(wired_pipeline):
+    _, calls = wired_pipeline
+    with pytest.raises(ValueError, match="Unknown visual style"):
+        pipeline.run_pipeline_v1(topic="test", run_id="bad-style", visual_style="nonexistent")
+    assert calls == []
+

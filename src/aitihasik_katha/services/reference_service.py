@@ -9,6 +9,7 @@ from google.genai import types
 
 from ..core.logging import get_logger
 from ..core.settings import settings
+from ..core.visual_styles import get_style
 from ..utils.genai_client import get_genai_client
 from ..utils.retry import retry
 from .image_service import generate_image, save_png
@@ -164,18 +165,20 @@ def _historical_reference(character: dict, image_path: str) -> Reference | None:
     )
 
 
-def _generated_reference(character: dict, style: str, image_path: str) -> Reference:
+def _generated_reference(character: dict, style: str, image_path: str, visual_style: str | None = None) -> Reference:
+    style_obj = get_style(visual_style or settings.VISUAL_STYLE)
+    style_prompt = "Photorealistic" if style_obj.name == "realistic" else f"{style_obj.label} art style. {style_obj.character_style_guidance}"
     prompt = (
         f"Character reference image of {character['name']}: {character['description']}. "
         "Full body, standing still and facing the camera, soft even lighting, plain neutral background. "
-        f"Photorealistic. No text. Overall look: {style}"
+        f"{style_prompt}. No text. Overall look: {style}"
     )
     save_png(generate_image(prompt), image_path)
-    logger.info("Generated reference image for %s", character["id"])
+    logger.info("Generated reference image for %s (%s)", character["id"], style_obj.name)
     return Reference(image_path=image_path, source="generated")
 
 
-def resolve_reference(character: dict, style: str, image_path: str) -> Reference:
+def resolve_reference(character: dict, style: str, image_path: str, visual_style: str | None = None) -> Reference:
     """Reference image for a character: a real historical portrait when one is freely
     available and actually depicts them, otherwise a generated one.
 
@@ -186,14 +189,15 @@ def resolve_reference(character: dict, style: str, image_path: str) -> Reference
         logger.info("Reusing existing reference %s", image_path)
         return Reference(**json.loads(sidecar.read_text(encoding="utf-8")))
 
+    style_obj = get_style(visual_style or settings.VISUAL_STYLE)
     reference = None
-    if settings.USE_HISTORICAL_PORTRAITS:
+    if settings.USE_HISTORICAL_PORTRAITS and style_obj.allow_real_media:
         try:
             reference = _historical_reference(character, image_path)
         except Exception as exc:  # noqa: BLE001 - a lookup failure just means we generate one instead
             logger.warning("Portrait lookup failed for %s, generating instead: %s", character["id"], exc)
     if reference is None:
-        reference = _generated_reference(character, style, image_path)
+        reference = _generated_reference(character, style, image_path, visual_style=style_obj.name)
 
     sidecar.write_text(json.dumps(asdict(reference), ensure_ascii=False, indent=2), encoding="utf-8")
     return reference

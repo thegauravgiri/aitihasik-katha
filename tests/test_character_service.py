@@ -122,3 +122,26 @@ def test_scene_planner_is_told_not_to_show_idols_or_worship_unless_the_line_is_a
 
 def test_scene_planner_keeps_violent_moments_out_of_video_clips():
     assert "killing, sacrifice, injury" in character_service.SCENE_PLAN_PROMPT
+
+
+def test_frame_prompt_supports_disney_style():
+    prompt = build_frame_prompt(SHEET, {"characters": ["king"], "shot": "king on balcony"}, visual_style="disney")
+
+    assert "Disney and Pixar 3D animated feature film" in prompt
+    assert "subsurface scattering" in prompt
+    assert "Disney & Pixar 3D Animation style" in prompt
+    assert "Shot: king on balcony" in prompt
+
+
+def test_frame_prompt_supports_anime_style():
+    prompt = build_frame_prompt(SHEET, {"characters": [], "shot": "ancient temple"}, visual_style="anime")
+
+    assert "Studio Ghibli" in prompt
+    assert "Japanese 2D anime aesthetic" in prompt
+
+
+def test_build_scene_prompt_supports_stylized_motion():
+    prompt = build_scene_prompt(SHEET, {"characters": ["queen"], "shot": "queen turns"}, 4, visual_style="disney")
+
+    assert "Disney-Pixar character animation" in prompt
+    assert "4-second" in prompt

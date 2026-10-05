@@ -7,6 +7,7 @@ import faiss  # noqa: F401
 
 from .core.logging import configure_logging
 from .core.settings import settings
+from .core.visual_styles import list_styles, style_names
 from .ingest.pdf_ingestor import ingest_directory, ingest_pdf
 from .pipeline import publish_all_pending, publish_run, run_pipeline_v1
 from .storage import run_store
@@ -37,11 +38,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     pipeline_cmd.add_argument(
+        "--style",
+        choices=style_names(),
+        default=None,
+        help=f"Visual art style: {', '.join(style_names())} (default: VISUAL_STYLE)",
+    )
+    pipeline_cmd.add_argument(
         "--publish",
         action="store_true",
         help="Post to Instagram as soon as the video is made (default: stop for review, then use "
         "`instagram upload --run-id`; AUTO_PUBLISH=true in .env does the same)",
     )
+
+    subparsers.add_parser("styles", help="List available visual generation styles")
 
     ingest_cmd = subparsers.add_parser("ingest", help="Ingest one PDF or a directory")
     ingest_cmd.add_argument("--path", default=None, help="Single PDF path to ingest")
@@ -66,18 +75,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_styles() -> None:
+    styles = list_styles()
+    print(f"\n{'STYLE':<22} {'LABEL':<34} {'DESCRIPTION'}")
+    print("-" * 110)
+    for s in styles:
+        default_tag = " (default)" if s.name == "realistic" else ""
+        print(f"{s.name + default_tag:<22} {s.label:<34} {s.description}")
+    print()
+
+
 def _print_runs() -> None:
     records = run_store.list_runs()
     if not records:
         print("No tracked runs yet.")
         return
 
-    header = f"{'run_id':<38} {'status':<12} {'video':<6} {'uploaded':<9} {'topic'}"
+    header = f"{'run_id':<38} {'status':<12} {'style':<14} {'video':<6} {'uploaded':<9} {'topic'}"
     print(header)
     print("-" * len(header))
     for record in records:
         print(
             f"{record.run_id:<38} {record.status:<12} "
+            f"{record.visual_style or 'realistic':<14} "
             f"{'yes' if record.video_ready else 'no':<6} "
             f"{'yes' if record.instagram_uploaded else 'no':<9} "
             f"{record.topic or ''}"
@@ -88,14 +108,20 @@ def main() -> None:
     configure_logging()
     args = build_parser().parse_args()
 
+    if args.command == "styles":
+        _print_styles()
+        return
+
     if args.command == "run":
+        if args.style:
+            settings.VISUAL_STYLE = args.style
         if args.mode:
             settings.CLIP_MODE = args.mode
         if args.video_model:
             settings.VIDEO_MODEL = args.video_model
         if args.publish:
             settings.AUTO_PUBLISH = True
-        run_pipeline_v1(topic=args.topic, run_id=args.run_id)
+        run_pipeline_v1(topic=args.topic, run_id=args.run_id, visual_style=args.style)
         return
 
     if args.command == "list":
