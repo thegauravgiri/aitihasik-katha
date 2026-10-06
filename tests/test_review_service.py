@@ -34,6 +34,14 @@ def test_missing_fields_default_to_a_passing_review(monkeypatch):
     assert review.answers_topic is True
     assert review.unsupported_claims == []
     assert review.weak_hook is False
+    assert review.missing_cta is False
+
+
+def test_missing_cta_is_flagged(monkeypatch):
+    monkeypatch.setattr(review_service, "ask_json", lambda prompt: {"missing_cta": True})
+    review = review_service.review_story("t", "s", "b")
+    assert review.missing_cta is True
+
 
 
 def test_an_unexpected_reply_is_an_error(monkeypatch):

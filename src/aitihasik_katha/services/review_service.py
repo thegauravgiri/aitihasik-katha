@@ -21,7 +21,8 @@ Return ONLY a JSON object with this shape:
   "unsupported_claims": ["..."],
   "weak_hook": true or false,
   "hook_issue": "...",
-  "confusing_parts": ["..."]
+  "confusing_parts": ["..."],
+  "missing_cta": true or false
 }}
 
 - answers_topic: true only if the narration is about the topic and answers what it asks. If the topic
@@ -38,6 +39,8 @@ Return ONLY a JSON object with this shape:
   this once at normal speed. Quote any sentence they would not understand, that does not follow from the
   sentence before it, that contradicts another sentence, that repeats a point, or that uses a word they
   would have to look up. Use an empty list if everything is clear.
+- missing_cta: true if the narration ends abruptly without any organic spoken call to action (such as a debate
+  question, share prompt, or save/follow call). High-performing reels require an organic CTA.
 """
 
 
@@ -48,6 +51,7 @@ class Review:
     weak_hook: bool = False
     hook_issue: str = ""
     confusing_parts: list[str] = field(default_factory=list)
+    missing_cta: bool = False
 
 
 def _strings(value) -> list[str]:
@@ -65,4 +69,5 @@ def review_story(topic: str | None, story: str, research_brief: str) -> Review:
         weak_hook=bool(data.get("weak_hook", False)),
         hook_issue=str(data.get("hook_issue") or "").strip(),
         confusing_parts=_strings(data.get("confusing_parts")),
+        missing_cta=bool(data.get("missing_cta", False)),
     )

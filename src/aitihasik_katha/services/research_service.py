@@ -18,21 +18,25 @@ class Research:
     sources: list[dict] = field(default_factory=list)  # [{"title": ..., "uri": ...}]
 
 
-RESEARCH_PROMPT = """You are the researcher for a short-form history video channel about Nepal.
-Use Google Search to research the subject below and write a research brief for the scriptwriter.
+RESEARCH_PROMPT = """You are the lead historical researcher for an authoritative, high-engagement documentary channel about Nepal.
+Conduct exhaustive, deep, multi-angle research using Google Search on the subject below. Do NOT settle for superficial summaries, textbook clichés, or basic Wikipedia trivia. Uncover authentic, deeply researched, and unique historical details that educate the viewer and make the content undeniably trustworthy and fascinating.
 
 {subject}
 
-Prefer reputable sources: academic publications, encyclopedias, museum and government heritage sites,
-and established newspapers. Ignore fan wikis, social media and forums.
+Research & Sourcing Standards:
+- Prioritize reputable academic works, historical archives, established historians (such as Mahesh Chandra Regmi, Baburam Acharya, Ludwig Stiller, John Whelpton, Rishikesh Shaha, D.R. Regmi), official gazettes (नेपाल राजपत्र), museum collections, and verified accounts.
+- Filter out fan wikis, shallow travel blogs, and unverified social media claims.
+- Search specifically for obscure behind-the-scenes mechanics: secret letters, eyewitness memoirs, exact treaties/agreements, code words, specific dates, financial sums, or physical relics.
 
-Write the brief in English with these sections:
-- Summary: one line naming the subject, place and period.
-- Key people, places and dates.
-- Hook: the single most surprising, dramatic or little-known fact - something that would make someone stop scrolling.
-- Facts: 6-10 concrete, verifiable facts in chronological order, each with its date where known.
-- Legends: popular stories or traditions about it, clearly labelled as legend or tradition, not fact.
-- Disputed: anything historians disagree on, labelled as disputed.
+Write the research brief in English with these structured sections:
+- Summary: Subject, exact historical era, and geographical setting.
+- Hook: The single most shocking, dramatic, or counter-intuitive revelation—an unexpected betrayal, strange ritual, secret escape, or hidden consequence that shatters common assumptions.
+- Untold & Unique Details: 3 to 5 little-known, fascinating facts that ordinary people and standard school curricula never teach (e.g. behind-the-scenes negotiations, concealed motivations, bizarre coincidences, or covert operations).
+- Trust Anchors & Primary Evidence: Specific archival evidence, treaties/pacts (e.g. दिल्ली सम्झौता, सुगौली सन्धि), royal seals (लालमोहर, खड्ग निशाना), exact dates, primary quotes, memoirs, or surviving monuments/artifacts that prove the reality of this event.
+- Chronological Facts: 6 to 10 concrete, verifiable facts in chronological order, each anchored to its exact date or year where documented.
+- Legends vs. Reality: Popular traditions, court rumours, or folklore, clearly distinguished from what documented archival evidence confirms.
+- Disputed & Open Mysteries: Areas where reputable historians disagree, or questions that remain unsolved.
+- Viral Psychology & Sharing Triggers: Why will people share this video on TikTok/Instagram Reels? (Identify the emotional awe, cultural identity pride, or surprising insight that provides social currency to the viewer).
 Only include what the sources support."""
 
 

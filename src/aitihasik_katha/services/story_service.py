@@ -27,12 +27,13 @@ BANNED_OPENERS = ("तपाईंलाई थाहा छ", "के तपा
 STORY_PROMPT = """You write the narration for a vertical history video about Nepal (Instagram Reels, TikTok,
 YouTube Shorts) planned to run about {seconds} seconds. It is read aloud by a voice-over and shown as
 word-by-word captions. The goal: a viewer who knows NOTHING about history understands every sentence the
-first time they hear it, stays to the end, watches again, and sends it to a friend.
+first time they hear it, learns a unique, fascinating fact they never knew before, stays to the end,
+and is compelled to share it with friends and save it for later.
 
 LANGUAGE - this matters most
 - Write the way a Nepali YouTuber talks to friends in Kathmandu: everyday spoken Nepali in Devanagari,
   mixed naturally with common English words people really say (king, palace, festival, secret, real story,
-  wait, seriously, shocking, viral, officially). Not a news anchor, not a textbook, not a poem.
+  wait, seriously, shocking, viral, officially, record). Not a news anchor, not a textbook, not a poem.
 - Use simple, everyday words. Never use bookish or Sanskritised words. Say "भनिन्छ" or "मान्छेहरू भन्छन्",
   never "किंवदन्ती" or "जनविश्वास"; "रोक" never "प्रतिबन्ध"; "देखाउँछ" never "दर्शाउँछ"; "मरिसकेका"
   never "दिवंगत".
@@ -40,7 +41,10 @@ LANGUAGE - this matters most
   time ("पिङ, मतलब बाँसको ठूलो झुला").
 - Use the sentence-ending "।" in Nepali, never ".".
 
-CLARITY
+CLARITY & TRUSTABILITY
+- Ground the story in concrete, deeply researched trust anchors from the research brief: mention authentic
+  specific names, exact locations (specific courtyards, palace gates, embassies, border towns), documented
+  dates, or royal decrees/treaties when relevant. Specific evidence makes the story undeniably credible and captivating.
 - The video answers ONE question. Follow the plan below; do not add facts from outside it, and do not try
   to cover everything.
 - Leave out side details that do not move the answer forward (what an object's shape resembles, which god a
@@ -64,10 +68,17 @@ STRUCTURE
 3. STORY - short sentences with rising stakes and concrete details (names, numbers, places), about one new
    fact or turn every four to five seconds. Around 12-15 seconds in, and about every 15 seconds after that,
    open a new question the viewer needs answered, using a real turn from the plan, not a stock phrase.
-4. PAYOFF - the answer the hook promised, in plain words.
-5. LOOP ENDING - the last sentence points back to the hook's image or words, or leaves one sharp question
-   open, so the video feels like it starts again. No call to like, comment or follow; that goes in the
-   caption.
+4. PAYOFF - the climax that resolves the hook with concrete historical proof.
+5. SPOKEN CALL TO ACTION (CTA) & ENGAGEMENT PAYOFF - The final sentence MUST deliver an organic, conversational
+   spoken call to action (1 to 2 short sentences) that drives virality and retention:
+   - DEBATE / COMMENT HOOK: If the story has a moral, strategic or controversial dilemma, ask a sharp question
+     that sparks passionate debate in the comments (e.g. "तपाईंको विचारमा के राजाको यो कदम सही थियो? कमेन्टमा लेख्नुहोस्।"
+     or "तपाईं त्यो ठाउँमा भएको भए के गर्नुहुन्थ्यो?").
+   - SHARE TRIGGER (Social Currency): Encourage viewers to share this untold revelation with friends:
+     (e.g. "नेपालको यो अनौठो इतिहास आफ्ना साथीहरूलाई पनि सेयर गर्नुहोस्।").
+   - SAVE & FOLLOW TRIGGER (Utility): Call on viewers to save this history and follow:
+     (e.g. "नेपालका यस्तै अनसुना र प्रमाणित इतिहासका लागि अहिले नै सेभ र फलो गर्नुहोस्।").
+   Keep the spoken CTA completely natural and integrated with the story's ending—never sound robotic or salesy.
 
 STYLE
 - Only Nepali (Devanagari) and English letters. No letters from any other script.
@@ -140,6 +151,15 @@ def get_archive_context(topic: str | None = None) -> tuple[str, str]:
     store = get_store()
     seed = topic or store.get_random_document()["documents"]
     documents = store.get_similar_documents(seed)
+    if topic and ":" in topic:
+        sub = topic.split(":", 1)[1].strip()
+        if sub and sub != seed:
+            try:
+                for doc in store.get_similar_documents(sub):
+                    if doc not in documents:
+                        documents.append(doc)
+            except Exception:  # noqa: BLE001
+                pass
     return "---\n".join(document.strip() for document in documents)[:MAX_ARCHIVE_CHARS], seed
 
 
@@ -258,4 +278,8 @@ def _find_problems(topic: str | None, text: str, brief: str, plan: ScriptPlan) -
         found.problems.extend(f"This is confusing or does not follow from the sentence before: {part}" for part in review.confusing_parts)
         if review.weak_hook:
             found.problems.append(f"The hook is weak ({review.hook_issue or 'vague'}). Open with one specific, visual shock.")
+        if getattr(review, "missing_cta", False):
+            found.problems.append(
+                "The story ends without an organic spoken call to action. End with a sharp debate question, a share prompt, or a save/follow call."
+            )
     return found

@@ -81,3 +81,12 @@ def test_an_overloaded_model_is_retried_with_a_long_wait(monkeypatch):
 
     assert research_service.research(topic="x").brief == "a brief"
     assert waits == [60, 60]
+
+
+def test_research_prompt_demands_deep_research_and_trust_anchors():
+    prompt = research_service.RESEARCH_PROMPT
+    assert "Untold & Unique Details" in prompt
+    assert "Trust Anchors & Primary Evidence" in prompt
+    assert "Viral Psychology & Sharing Triggers" in prompt
+    assert "deep, multi-angle research" in prompt
+
