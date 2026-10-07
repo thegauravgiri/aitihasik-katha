@@ -33,8 +33,9 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "photorealistic cinematic shot with natural, realistic motion from the very first frame and a slow, "
-            "steady, filmic camera move. Faces and hands stay stable and undistorted, nothing morphs or melts. "
-            "Keep every person looking exactly as in the frame and keep the dark, moody lighting."
+            "steady, filmic camera move. Ground contact and physical gravity are strictly preserved: characters stay "
+            "firmly planted on the surface with realistic weight, no floating or foot sliding. Faces and hands stay stable "
+            "and undistorted, nothing morphs or melts. Keep every person looking exactly as in the frame and keep the dark, moody lighting."
         ),
         character_style_guidance=(
             "Characters look like real, ordinary, weathered people of the period: individual faces, lived-in skin, "
@@ -60,7 +61,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "stylized 2D animated shot with fluid expressive character movement, dynamic animated camera motion, "
-            "and vivid lighting. Keep the stylized 2D animation look consistent from the first frame without morphing into 3D or photorealism."
+            "and vivid lighting. Characters maintain solid ground contact, realistic weight, and stable anatomy without "
+            "floating or foot slipping. Keep the stylized 2D animation look consistent from the first frame without morphing into 3D or photorealism."
         ),
         character_style_guidance=(
             "Characters have expressive stylized 2D animation designs: clean distinctive silhouettes, expressive facial features, "
@@ -86,8 +88,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "3D animated feature film shot with expressive, smooth, bouncy Disney-Pixar character animation, "
-            "subtle facial micro-expressions, fluid cloth movement, and cinematic 3D camera drift. "
-            "Maintain the 3D animated feature look throughout."
+            "subtle facial micro-expressions, fluid cloth movement, and cinematic 3D camera drift. Characters stay firmly "
+            "grounded with appealing physical weight and balance. Maintain the 3D animated feature look throughout."
         ),
         character_style_guidance=(
             "Characters have appealing Disney/Pixar 3D animated designs: stylized proportions, expressive emotional eyes, "
@@ -112,7 +114,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "cinematic 2D anime shot with fluid anime motion timing, drifting atmospheric particles, gentle wind blowing through "
-            "hair and fabrics, and slow cinematic anime camera panning. Preserve the hand-drawn anime aesthetic."
+            "hair and fabrics, and slow cinematic anime camera panning. Characters remain naturally grounded with stable "
+            "anatomy and consistent cel-shading. Preserve the hand-drawn anime aesthetic."
         ),
         character_style_guidance=(
             "Characters have beautiful 2D anime designs: expressive anime eyes, distinctive stylized hair and period headwear, "
@@ -136,8 +139,9 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
             "armor and ragged robes, ominous ancient atmosphere. Visceral, haunting and epic."
         ),
         video_motion_prompt=(
-            "dark fantasy cinematic shot with slow, menacing camera creep, drifting smoke and embers, and subtle realistic movements. "
-            "Maintain the oppressive shadows and gothic atmosphere throughout without melting or distortion."
+            "dark fantasy cinematic shot with slow, menacing camera creep, drifting smoke and embers, and subtle realistic movements "
+            "with heavy physical gravity and firm footing. Maintain the oppressive shadows and gothic atmosphere throughout without "
+            "floating, melting, or distortion."
         ),
         character_style_guidance=(
             "Characters look battle-worn, grim and imposing: weathered rugged faces, dark intense gazes, shadowed features, "
@@ -162,7 +166,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "living oil painting shot where the classical painting subtly comes to life with slow, majestic camera push "
-            "and gentle atmospheric movement of smoke, flames, and royal fabrics, preserving the painted brushstroke texture."
+            "and gentle atmospheric movement of smoke, flames, and royal fabrics, keeping subjects firmly anchored in the "
+            "painted composition while preserving the visible brushstroke texture."
         ),
         character_style_guidance=(
             "Characters resemble figures in classical royal historical oil portraits: dignified postures, solemn expressive gazes, "
@@ -187,7 +192,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "dynamic graphic novel cinematic shot with dramatic camera push-in, subtle animated ink movement, "
-            "and bold comic lighting. Maintain the striking high-contrast ink and halftone style."
+            "and bold comic lighting. Characters remain firmly grounded with solid inked contours and anatomical stability. "
+            "Maintain the striking high-contrast ink and halftone style."
         ),
         character_style_guidance=(
             "Characters have bold graphic novel designs: sharp angular facial structures, strong jawlines, "
@@ -212,7 +218,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "handcrafted stop-motion claymation shot with authentic stop-motion frame-by-frame character movement, "
-            "subtle clay shifts, and miniature studio lighting. Maintain the tactile plasticine clay look."
+            "subtle clay shifts, and miniature studio lighting. Figures stay firmly anchored on the physical miniature set. "
+            "Maintain the tactile plasticine clay look."
         ),
         character_style_guidance=(
             "Characters are designed as sculpted plasticine clay figures: charming simplified facial features, "
@@ -237,7 +244,8 @@ VISUAL_STYLES: Mapping[str, VisualStyle] = {
         ),
         video_motion_prompt=(
             "vintage archival documentary shot with authentic mechanical camera movement, subtle film gate jitter, "
-            "and realistic period reenactment motion. Preserve the archival 16mm film texture throughout."
+            "and realistic grounded period reenactment motion with solid physical weight and friction on the ground. "
+            "Preserve the archival 16mm film texture throughout without floating or anatomical morphing."
         ),
         character_style_guidance=(
             "Characters look like real historical subjects captured in vintage archival footage: authentic period faces, "

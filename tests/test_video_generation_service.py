@@ -123,3 +123,10 @@ def test_the_block_wording_seen_in_real_runs_is_recognised():
         assert is_block_error(Exception(message)), message
     assert not is_block_error(Exception("failed to generate asset, please retry"))
     assert not is_block_error(Exception("429 Too Many Requests"))
+
+
+def test_neutral_prompt_enforces_ground_anchoring_and_stability():
+    prompt = video_generation_service.neutral_prompt(6)
+    assert "firmly grounded with realistic physical weight" in prompt
+    assert "no floating, no sliding feet" in prompt
+    assert "6-second" in prompt

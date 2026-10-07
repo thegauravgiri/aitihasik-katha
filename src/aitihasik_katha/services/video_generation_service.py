@@ -24,11 +24,12 @@ def clip_duration(seconds: float) -> int:
 
 def neutral_prompt(seconds: int) -> str:
     """A prompt with nothing in it a safety filter could object to: the frame itself carries the scene,
-    so this only asks for a slow camera move."""
+    so this only asks for a slow camera move with grounded physics."""
     return (
         f"Animate this image into a {seconds}-second vertical 9:16 cinematic shot with a slow, steady camera "
-        "push-in and subtle, natural movement. Keep everything exactly as it appears in the image. "
-        "No text, no captions, no dialogue, no music."
+        "push-in and subtle, natural movement. Characters and objects remain firmly grounded with realistic "
+        "physical weight, solid ground contact, and natural gravity; no floating, no sliding feet, no morphing limbs or faces. "
+        "Keep everything exactly as it appears in the image. No text, no captions, no dialogue, no music."
     )
 
 

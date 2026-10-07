@@ -69,6 +69,11 @@ Rules:
 - Vary the shot size and angle from one scene to the next: extreme close-up on a detail, medium, wide,
   low angle, over the shoulder. Avoid crowds of identically dressed extras and avoid everything being
   front-lit and sunny; dark, atmospheric light suits history.
+- Physical grounding and shot stability: Video models frequently fail on unanchored full-body locomotion
+  across wide angles (causing characters to float in mid-air, moonwalk, or legs to melt). To guarantee visual realism:
+  * For moving characters, prefer medium shots (waist-up, chest-up), three-quarter framing, or over-the-shoulder perspectives where feet are not detached or floating in empty space.
+  * When showing full-body or walking characters, explicitly anchor them to the physical environment: feet firmly planted on paved stone paths, dirt, or wooden floors with visible contact, or seated firmly on cushions, chairs, or horseback.
+  * Emphasize smooth, cinematic camera movements (slow dolly push, steady tracking shot, gentle arc, or cinematic pan) to generate scene momentum, while character actions should be natural, purposeful, and grounded (turning to look, speaking, breathing, gesturing, reaching, or measured steps with physical weight) rather than wild, chaotic running or ambiguous floating locomotion.
 - "real_search": a short, specific English search phrase (2 to 5 words) for Wikimedia Commons that would
   find a REAL photograph or archive image of what the sentence is about, but ONLY for things that can
   really be photographed and look the same today or in old photographs: a named place, building, statue,
@@ -197,6 +202,9 @@ def build_frame_prompt(sheet: dict, scene_plan: dict, visual_style: str | None =
     if sheet.get("supporting"):
         other_people = f"Other people in the scene: {sheet['supporting']} {other_people}"
     lines.append(other_people)
+    lines.append(
+        "Spatial grounding: Every subject and object is solidly grounded on the floor or terrain with realistic physical weight and natural contact shadows; no floating subjects or detached perspective."
+    )
     lines.append(f"Shot: {scene_plan['shot']}")
     return "\n".join(lines)
 
@@ -207,8 +215,14 @@ def build_scene_prompt(sheet: dict, scene_plan: dict, seconds: int, visual_style
     style_obj = get_style(visual_style or sheet.get("visual_style") or settings.VISUAL_STYLE)
     lines = [
         f"Animate this opening frame into a {seconds}-second vertical 9:16 {style_obj.video_motion_prompt}. "
-        "Faces and hands stay stable and undistorted, nothing morphs or melts. Keep every person looking "
-        f"exactly as in the frame. No text, no captions, no dialogue, no music.",
+        "Ground contact, physical gravity, and spatial stability are strictly enforced: characters stay solidly "
+        "anchored to the floor or ground with realistic physical weight and natural friction; strictly no floating in mid-air, "
+        "no foot sliding, no moonwalking. "
+        "Anatomical and structural consistency: faces, limbs, and hands remain structurally stable and undistorted without "
+        "warping, morphing, melting, or multiplying. "
+        "Keep camera movement deliberate and smooth (cinematic push-in, slow dolly, or subtle pan). "
+        "Keep every person, clothing, and environment looking exactly as in the opening frame. "
+        "No text, no captions, no dialogue, no music.",
         f"Style: {sheet['style']}",
     ]
     if visible:

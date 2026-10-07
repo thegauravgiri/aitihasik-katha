@@ -145,3 +145,23 @@ def test_build_scene_prompt_supports_stylized_motion():
 
     assert "Disney-Pixar character animation" in prompt
     assert "4-second" in prompt
+
+
+def test_scene_planner_instructs_ground_anchoring_and_anti_floating():
+    prompt = character_service.SCENE_PLAN_PROMPT
+    assert "Physical grounding and shot stability" in prompt
+    assert "float in mid-air, moonwalk" in prompt
+    assert "feet firmly planted" in prompt
+
+
+def test_build_frame_prompt_includes_spatial_grounding():
+    prompt = build_frame_prompt(SHEET, {"characters": ["king"], "shot": "king on a balcony"})
+    assert "Spatial grounding" in prompt
+    assert "solidly grounded on the floor or terrain" in prompt
+
+
+def test_build_scene_prompt_enforces_anti_floating_and_ground_physics():
+    prompt = build_scene_prompt(SHEET, {"characters": ["queen"], "shot": "queen walks"}, 6)
+    assert "Ground contact, physical gravity, and spatial stability are strictly enforced" in prompt
+    assert "no floating in mid-air, no foot sliding, no moonwalking" in prompt
+    assert "Anatomical and structural consistency" in prompt

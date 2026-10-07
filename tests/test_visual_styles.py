@@ -68,3 +68,10 @@ def test_list_and_names_contain_expected_styles():
 
     styles = list_styles()
     assert len(styles) == len(names)
+
+
+def test_realistic_and_documentary_enforce_ground_anchoring():
+    realistic = get_style("realistic")
+    doc = get_style("vintage_documentary")
+    assert "Ground contact and physical gravity" in realistic.video_motion_prompt
+    assert "realistic grounded period reenactment motion" in doc.video_motion_prompt
