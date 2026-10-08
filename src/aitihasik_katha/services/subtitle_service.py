@@ -16,18 +16,31 @@ def _get_client() -> SpeechClient:
 
 
 @retry(exceptions=(GoogleAPICallError,), max_attempts=3, delay_seconds=10)
-def _generate_transcription(audio_file: str) -> cloud_speech.RecognizeResponse:
+def _generate_transcription(audio_file: str, phrase_hints: list[str] | None = None) -> cloud_speech.RecognizeResponse:
     """Transcribe a GCS audio file URI with word-level time offsets."""
     features = cloud_speech.RecognitionFeatures(
         enable_word_time_offsets=True,
         # enable_automatic_punctuation=True,
     )
 
+    adaptation = None
+    if phrase_hints:
+        valid = [cloud_speech.PhraseSet.Phrase(value=p, boost=15.0) for p in phrase_hints if p.strip()]
+        if valid:
+            adaptation = cloud_speech.SpeechAdaptation(
+                phrase_sets=[
+                    cloud_speech.SpeechAdaptation.AdaptationPhraseSet(
+                        inline_phrase_set=cloud_speech.PhraseSet(phrases=valid[:1000])
+                    )
+                ]
+            )
+
     config = cloud_speech.RecognitionConfig(
         auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
         language_codes=["ne-NP"],
         model="long",
         features=features,
+        adaptation=adaptation,
     )
 
     file_metadata = cloud_speech.BatchRecognizeFileMetadata(uri=audio_file)
@@ -45,11 +58,11 @@ def _generate_transcription(audio_file: str) -> cloud_speech.RecognizeResponse:
     return response.results[audio_file].transcript
 
 
-def generate_transcription(audio_file_path: str):
+def generate_transcription(audio_file_path: str, phrase_hints: list[str] | None = None):
     settings.require("BUCKET", "PROJECT_ID")
     bucket_file_path = upload_file_to_gcs(settings.BUCKET, audio_file_path, audio_file_path, return_public=False)
     try:
-        return _generate_transcription(bucket_file_path)
+        return _generate_transcription(bucket_file_path, phrase_hints=phrase_hints)
     finally:
         delete_file_from_gcs(bucket_file_path)
 

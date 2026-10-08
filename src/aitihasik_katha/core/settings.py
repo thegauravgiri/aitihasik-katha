@@ -16,7 +16,6 @@ class Settings(BaseSettings):
 
     # --- Gemini models ---
     GEMINI_API_KEY: str = ""
-    EMBEDDING_MODEL: str = ""
     CHAT_MODEL: str = ""
     AUDIO_MODEL: str = ""
     # Animates each scene's opening frame (Veo image-to-video).

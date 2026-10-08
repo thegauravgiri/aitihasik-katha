@@ -40,12 +40,13 @@ Write the research brief in English with these structured sections:
 Only include what the sources support."""
 
 
-def _subject(topic: str | None, archive_passage: str | None) -> str:
+def _subject(topic: str | None) -> str:
     if topic:
         return f"Subject: {topic}"
     return (
-        "Subject: identify the main historical subject of this passage from our archive, then research it "
-        f"further.\n\nPassage:\n{(archive_passage or '')[:3000]}"
+        "Subject: Pick an authentic, compelling, and little-known historical event, royal mystery, or turning point "
+        "from Nepal's history (such as Licchavi, Malla, Shah unification, or Rana era) that ordinary people would be "
+        "fascinated to learn about."
     )
 
 
@@ -56,12 +57,12 @@ def _subject(topic: str | None, archive_passage: str | None) -> str:
     backoff_keywords=RATE_LIMIT_KEYWORDS,
     backoff_delay_seconds=60,
 )
-def research(topic: str | None = None, archive_passage: str | None = None) -> Research:
-    """A web-grounded research brief for a topic, or for the subject of an archive passage."""
+def research(topic: str | None = None) -> Research:
+    """A web-grounded research brief for a topic, or for an untold Nepali historical subject."""
     settings.require("CHAT_MODEL")
     response = get_genai_client().models.generate_content(
         model=settings.CHAT_MODEL,
-        contents=RESEARCH_PROMPT.format(subject=_subject(topic, archive_passage)),
+        contents=RESEARCH_PROMPT.format(subject=_subject(topic)),
         config=types.GenerateContentConfig(tools=[types.Tool(google_search=types.GoogleSearch())]),
     )
     brief = (response.text or "").strip()

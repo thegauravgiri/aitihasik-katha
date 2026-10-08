@@ -46,15 +46,14 @@ def test_research_uses_google_search_and_collects_unique_sources(monkeypatch):
     assert "Subject: Battle of Kirtipur" in request["contents"]
 
 
-def test_research_without_topic_identifies_subject_from_the_archive_passage(monkeypatch):
-    client = _FakeClient(_response("Summary: Licchavi inscriptions"))
+def test_research_without_topic_picks_untold_history_subject(monkeypatch):
+    client = _FakeClient(_response("Summary: Licchavi era mystery"))
     monkeypatch.setattr(research_service, "get_genai_client", lambda: client)
 
-    research_service.research(archive_passage="Mānadeva's inscription at Changu Narayan...")
+    research_service.research()
 
     prompt = client.requests[0]["contents"]
-    assert "identify the main historical subject" in prompt
-    assert "Changu Narayan" in prompt
+    assert "Nepal's history" in prompt
 
 
 def test_empty_brief_is_an_error(monkeypatch):

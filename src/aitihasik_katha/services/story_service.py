@@ -2,10 +2,6 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-# Must be imported before langchain_google_genai below: faiss's native library needs to
-# init before anything pulling in gRPC/protobuf, or the process segfaults. See cli.py.
-from ..storage.vector_store import get_store
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from ..core.logging import get_logger
@@ -18,8 +14,6 @@ from .script_planner import ScriptPlan, plan_script
 
 
 logger = get_logger(__name__)
-
-MAX_ARCHIVE_CHARS = 25_000
 
 MAX_REVISIONS = 3
 BANNED_OPENERS = ("तपाईंलाई थाहा छ", "के तपाईंलाई", "कल्पना गर्नुहोस्", "भनिन्छ", "किंवदन्ती", "एक समयको")
@@ -53,9 +47,13 @@ CLARITY & TRUSTABILITY
   loosely related facts, no sentence that contradicts or repeats another, and no empty filler such as
   "अनौठो", "रहस्यमय" or "तर यो त सुरुवात मात्र थियो" unless the next sentence delivers something that
   really is bigger.
-- Use ONLY the research brief and archive excerpts for facts. If they do not confirm something the
+- Use ONLY the research brief for facts. If it does not confirm something the
   topic asks about (an official declaration, a date, a number), say so in one short plain sentence such as
   "यसको पक्का प्रमाण भने भेटिँदैन।" Never invent it. A legend is told as a legend: "भनिन्छ ... ।"
+
+DATES & HISTORICAL ACCURACY (CRITICAL)
+- For events in Nepali history (especially from the Shah and Rana eras onward, like the 2007 revolution, Kot Parva, or Treaty eras), ALWAYS write iconic dates in Nepali Bikram Sambat (वि.सं.) format: e.g. "२००७ साल फागुन ७", "२००७ साल कार्तिक २१", "१९०३ साल", "२०२८ साल", etc.
+- STRICT RULE: NEVER write English/Western month names in Devanagari (such as "फेब्रुअरी", "नोभेम्बर", "मार्च", "अप्रिल"). Speech-to-text acoustic recognition corrupts these into incorrect words (e.g. "फेब्रुअरी" gets mistranscribed as "जेठ १"). When mentioning a Gregorian year, write only the year in Nepali (e.g. "सन् १९५० मा", never "फेब्रुअरी १९५१ मा").
 
 STRUCTURE
 1. HOOK - the first sentence, under 3 seconds: one specific, visual shock a stranger understands at once:
@@ -109,9 +107,6 @@ Beats, in order:
 
 ## Research brief
 {research}
-
-## Archive excerpts
-{archive}
 """
 
 REVISION_NOTE = """
@@ -145,24 +140,6 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(model=settings.CHAT_MODEL, api_key=settings.GEMINI_API_KEY)
 
 
-def get_archive_context(topic: str | None = None) -> tuple[str, str]:
-    """Matching passages from the local archive, plus the passage the story is seeded
-    from (a random one when there's no topic)."""
-    store = get_store()
-    seed = topic or store.get_random_document()["documents"]
-    documents = store.get_similar_documents(seed)
-    if topic and ":" in topic:
-        sub = topic.split(":", 1)[1].strip()
-        if sub and sub != seed:
-            try:
-                for doc in store.get_similar_documents(sub):
-                    if doc not in documents:
-                        documents.append(doc)
-            except Exception:  # noqa: BLE001
-                pass
-    return "---\n".join(document.strip() for document in documents)[:MAX_ARCHIVE_CHARS], seed
-
-
 @retry(exceptions=(Exception,), max_attempts=3, delay_seconds=5)
 def _invoke(prompt: str) -> str:
     content = _get_llm().invoke(prompt).content
@@ -177,35 +154,29 @@ def _invoke(prompt: str) -> str:
 def write_story(topic: str | None = None) -> Story:
     """Narration for one video.
 
-    With a topic, the web research on that topic leads and matching archive passages
-    support it. Without one, a random archive passage picks the subject and the web
-    research expands on it.
+    With a topic, web research investigates that topic. Without one, web research
+    identifies an authentic, fascinating untold subject from Nepali history and researches it.
     """
-    archive, seed = get_archive_context(topic)
-
     brief, sources = "", []
     if settings.USE_WEB_RESEARCH:
         try:
-            result = research(topic=topic, archive_passage=None if topic else seed)
+            result = research(topic=topic)
             brief, sources = result.brief, result.sources
         except Exception as exc:  # noqa: BLE001
-            # A requested topic is rarely covered by the archive, which would then steer the
-            # story to an unrelated subject; fail so the run can be resumed instead.
             if topic:
                 raise RuntimeError(f"Web research failed for the topic, not writing the story: {exc}") from exc
-            logger.warning("Web research failed, writing from the archive only: %s", exc)
+            logger.warning("Web research failed: %s", exc)
 
-    plan = plan_script(topic, brief, archive)
+    plan = plan_script(topic, brief)
     logger.info("Planned a %ss video (about %d words): %s", plan.seconds, plan.target_words, plan.reason)
     prompt = STORY_PROMPT.format(
         seconds=plan.seconds,
         min_words=plan.min_words,
         max_words=plan.max_words,
-        topic=topic or "(none: tell the story from the archive excerpts)",
+        topic=topic or "(none: choose an untold story from the research brief)",
         angle=plan.angle or "(choose one clear question and answer it)",
         beats="\n".join(f"- {beat}" for beat in plan.beats) or "- (hook, context, turns, payoff, loop ending)",
         research=brief or "(none)",
-        archive=archive or "(none)",
     )
     text = nepali_punctuation(_invoke(prompt))
     for revision in range(MAX_REVISIONS + 1):

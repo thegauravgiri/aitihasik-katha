@@ -128,6 +128,7 @@ def wired_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "fit_clip_to_duration", _fit_clip_to_duration)
     monkeypatch.setattr(pipeline, "animate_still", _animate_still)
     monkeypatch.setattr(pipeline, "merge_video_clips", _merge_video_clips)
+    monkeypatch.setattr(pipeline, "get_background_music", lambda **kwargs: None)
     monkeypatch.setattr(settings, "USE_REAL_MEDIA", True)
     monkeypatch.setattr(pipeline, "find_real_media", lambda query, line: calls.append(("real_search", query)) and None)
     monkeypatch.setattr(pipeline, "real_video_clip", _real_video_clip)

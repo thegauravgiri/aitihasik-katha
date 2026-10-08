@@ -1,6 +1,5 @@
 import json
 import os
-import random
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
@@ -20,6 +19,7 @@ from .services.character_service import (
 from .services.image_service import generate_scene_frame
 from .services.real_media_service import find_real_media
 from .services.instagram_service import get_instagram_service
+from .services.music_service import get_background_music
 from .services.reference_service import resolve_reference
 from .services.video_generation_service import VideoBlockedError, clip_duration, generate_scene_clip
 from .services.scene_timing import Subtitle, compute_scene_durations, split_into_scenes
@@ -74,7 +74,11 @@ def _generate_audio_stage(
         raw_subs = json.loads(subs_path.read_text(encoding="utf-8"))
         subtitles = [((float(item[0][0]), float(item[0][1])), nepali_punctuation(item[1])) for item in raw_subs]
     else:
-        transcription = generate_transcription(audio_output_filepath)
+        phrase_hints = list(dict.fromkeys(w.strip("।?!,.;:\"'()") for w in story.split() if len(w.strip("।?!,.;:\"'()")) > 1))
+        try:
+            transcription = generate_transcription(audio_output_filepath, phrase_hints=phrase_hints)
+        except TypeError:
+            transcription = generate_transcription(audio_output_filepath)
         subtitles = get_subtitle(transcription)
         subs_path.parent.mkdir(parents=True, exist_ok=True)
         subs_path.write_text(json.dumps(subtitles, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -305,17 +309,25 @@ def _cover_stage(run_path: str, cover: dict, frame_paths: list[str]) -> str | No
         return None
 
 
-def _pick_music() -> str | None:
-    """A random track from BACKGROUND_MUSIC_DIR, if any were added."""
-    folder = Path(settings.BACKGROUND_MUSIC_DIR)
-    tracks = sorted(p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a")) if folder.is_dir() else []
-    return str(random.choice(tracks)) if tracks else None
-
-
 def _assemble_video_stage(
-    run_path: str, audio_filepath: str, subtitles: list[Subtitle], clip_filenames: list[str], cover: dict | None = None
+    run_path: str,
+    audio_filepath: str,
+    subtitles: list[Subtitle],
+    clip_filenames: list[str],
+    cover: dict | None = None,
+    topic: str | None = None,
+    story: str | None = None,
 ) -> str | None:
     final_video_output_filepath = os.path.join(run_path, settings.OUTPUT_PATH, "final_video.mp4")
+    plan_path = Path(run_path) / settings.OUTPUT_PATH / "script_plan.json"
+    plan = None
+    if plan_path.exists():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not read script_plan.json for music selection: %s", exc)
+
+    bg_music = get_background_music(topic=topic, story=story, plan=plan)
     return merge_video_clips(
         final_video_output_filepath,
         voice_over=audio_filepath,
@@ -323,7 +335,7 @@ def _assemble_video_stage(
         clip_filenames=clip_filenames,
         hook_title=cover,
         branding=True,
-        background_music=_pick_music(),
+        background_music=bg_music,
     )
 
 
@@ -441,7 +453,15 @@ def run_pipeline_v1(
         )
         run_store.upsert_run(current_run_id, status="media_ready")
 
-        final_video_path = _assemble_video_stage(run_path, audio_filepath, subtitles, generated_video_clips, cover)
+        final_video_path = _assemble_video_stage(
+            run_path,
+            audio_filepath,
+            subtitles,
+            generated_video_clips,
+            cover,
+            topic=topic,
+            story=story,
+        )
 
         if not final_video_path:
             logger.warning("Pipeline completed without creating final video for run_id=%s", current_run_id)

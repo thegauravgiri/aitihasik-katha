@@ -1,14 +1,8 @@
 import argparse
 
-# faiss must be imported before anything that pulls in gRPC/protobuf (langchain_google_genai and
-# the google-cloud clients, transitively via .pipeline below). Importing them in the other order
-# reliably segfaults on this machine (native library init-order conflict). Keep this import first.
-import faiss  # noqa: F401
-
 from .core.logging import configure_logging
 from .core.settings import settings
 from .core.visual_styles import list_styles, style_names
-from .ingest.pdf_ingestor import ingest_directory, ingest_pdf
 from .pipeline import publish_all_pending, publish_run, run_pipeline_v1
 from .storage import run_store
 
@@ -51,12 +45,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("styles", help="List available visual generation styles")
-
-    ingest_cmd = subparsers.add_parser("ingest", help="Ingest one PDF or a directory")
-    ingest_cmd.add_argument("--path", default=None, help="Single PDF path to ingest")
-    ingest_cmd.add_argument("--language", default="en", choices=["en", "ne"], help="Language for single PDF ingestion")
-    ingest_cmd.add_argument("--base-dir", default="data/pdfs", help="Base directory with en/ and ne/ subfolders")
-
     subparsers.add_parser("list", help="List tracked runs and their status")
 
     instagram_cmd = subparsers.add_parser("instagram", help="Instagram publishing commands")
@@ -136,11 +124,6 @@ def main() -> None:
             publish_run(args.run_id)
             print(f"Published run {args.run_id}")
         return
-
-    if args.path:
-        ingest_pdf(args.path, language=args.language)
-    else:
-        ingest_directory(base_dir=args.base_dir)
 
 
 if __name__ == "__main__":
