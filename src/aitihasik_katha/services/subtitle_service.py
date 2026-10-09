@@ -1,13 +1,16 @@
 from functools import lru_cache
 
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import GoogleAPICallError, InvalidArgument
 from google.cloud.speech_v2 import SpeechClient
 from google.cloud.speech_v2.types import cloud_speech
 
+from ..core.logging import get_logger
 from ..core.settings import settings
 from ..utils.gcs import delete_file_from_gcs, upload_file_to_gcs
 from ..utils.nepali import nepali_punctuation
 from ..utils.retry import retry
+
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -25,7 +28,7 @@ def _generate_transcription(audio_file: str, phrase_hints: list[str] | None = No
 
     adaptation = None
     if phrase_hints:
-        valid = [cloud_speech.PhraseSet.Phrase(value=p, boost=15.0) for p in phrase_hints if p.strip()]
+        valid = [cloud_speech.PhraseSet.Phrase(value=p) for p in phrase_hints if p.strip()]
         if valid:
             adaptation = cloud_speech.SpeechAdaptation(
                 phrase_sets=[
@@ -53,7 +56,17 @@ def _generate_transcription(audio_file: str, phrase_hints: list[str] | None = No
         ),
     )
 
-    operation = _get_client().batch_recognize(request=request)
+    try:
+        operation = _get_client().batch_recognize(request=request)
+    except InvalidArgument as exc:
+        if adaptation:
+            logger.warning("Speech adaptation rejected by recognizer (%s); retrying without adaptation", exc)
+            config.adaptation = None
+            request.config = config
+            operation = _get_client().batch_recognize(request=request)
+        else:
+            raise
+
     response = operation.result(timeout=120)
     return response.results[audio_file].transcript
 

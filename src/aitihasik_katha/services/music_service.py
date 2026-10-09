@@ -33,9 +33,9 @@ _MOOD_KEYWORDS = {
     ],
     MOOD_HERITAGE: [
         "फुटबल", "खेल", "कला", "चाड", "दसैँ", "पिङ", "संस्कृति", "गीत", "इतिहास",
-        "पायोनियर", "नेपालको खेल", "दरबार शैली", "भवन", "सडक",
+        "पायोनियर", "नेपालको खेल", "दरबार शैली", "भवन", "सडक", "झण्डा", "ध्वजा", "प्रतीक",
         "football", "sport", "pioneer", "culture", "festival", "tradition", "heritage",
-        "legacy", "origin", "kite", "dashain", "architect", "memoir", "everyday"
+        "legacy", "origin", "kite", "dashain", "architect", "memoir", "everyday", "flag", "symbol", "pennant"
     ],
     MOOD_TRIUMPHANT: [
         "प्रजातन्त्र", "क्रान्ति", "घोषणा", "संविधान", "अधिकार", "राणा शासन ढल्यो", "विद्रोह",
