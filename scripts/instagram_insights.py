@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
@@ -38,8 +39,17 @@ MEDIA_FIELDS = "id,caption,timestamp,permalink,media_type,media_product_type,med
 DURATION_CACHE = ROOT / "reports" / "instagram" / "durations.json"
 
 
-def _get(url: str, params: dict) -> dict:
-    response = requests.get(url, params={**params, "access_token": settings.INSTAGRAM_PAGE_ACCESS_TOKEN}, timeout=60)
+def _get(url: str, params: dict, attempts: int = 4) -> dict:
+    """GET a Graph API URL. Network errors are retried and re-raised without the request URL,
+    because that URL contains the access token."""
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(url, params={**params, "access_token": settings.INSTAGRAM_PAGE_ACCESS_TOKEN}, timeout=30)
+            break
+        except requests.RequestException as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"Could not reach the Instagram API ({type(exc).__name__}) after {attempts} tries") from None
+            time.sleep(3 * attempt)
     data = response.json()
     if "error" in data:
         raise RuntimeError(data["error"].get("message", "Graph API error"))

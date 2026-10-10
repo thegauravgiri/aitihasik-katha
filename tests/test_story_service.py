@@ -6,9 +6,19 @@ from aitihasik_katha.services.research_service import Research
 from aitihasik_katha.services.review_service import Review
 from aitihasik_katha.services.script_planner import ScriptPlan
 
-GOOD = " ".join(["शब्द"] * 90)
-TOO_LONG = " ".join(["शब्द"] * 140)
-LONG_STORY = " ".join(["शब्द"] * 190)
+
+
+def _text(words: int) -> str:
+    """A script of exactly `words` words in sentences of six words."""
+    sentences = [" ".join(["शब्द"] * 6) + "।" for _ in range(words // 6)]
+    if words % 6:
+        sentences.append(" ".join(["शब्द"] * (words % 6)) + "।")
+    return " ".join(sentences)
+
+
+GOOD = _text(90)
+TOO_LONG = _text(140)
+LONG_STORY = _text(190)
 TOPIC = "Why are kites flown during Dashain?"
 
 
@@ -58,7 +68,7 @@ def test_the_prompt_asks_for_the_planned_length_a_loop_ending_and_no_spoken_call
     assert "about 45 seconds" in prompt
     assert f"{plan.min_words} to {plan.max_words} words" in prompt
     assert "LOOP ENDING" in prompt
-    assert "Do NOT ask viewers to like, comment or follow" in prompt
+    assert "No call to like, comment or follow" in prompt
 
 
 def test_failed_research_for_a_topic_stops_instead_of_writing_from_the_archive(wired, monkeypatch):
@@ -113,12 +123,14 @@ def test_an_explanatory_topic_gets_a_longer_script_without_being_cut(wired):
     assert story.text == LONG_STORY
     assert len(wired["prompts"]) == 1
     assert "about 85 seconds" in wired["prompts"][0]
-    assert story.plan == {"seconds": 85, "reason": "why and how: needs time", "target_words": 187}
+    assert story.plan == {
+        "seconds": 85, "reason": "why and how: needs time", "angle": "", "beats": [], "target_words": 187,
+    }
 
 
 def test_the_same_draft_is_too_long_for_a_short_plan_and_too_short_for_a_long_one(wired):
     wired["plan"] = ScriptPlan(30)
-    wired["drafts"] = [GOOD, " ".join(["शब्द"] * 66)]
+    wired["drafts"] = [GOOD, _text(66)]
     short_story = story_service.write_story(topic=TOPIC)
     assert "It is 90 words" in wired["prompts"][1]
     assert len(short_story.text.split()) == 66
@@ -187,3 +199,97 @@ def test_review_can_be_turned_off(wired, monkeypatch):
     story_service.write_story(topic=TOPIC)
 
     assert wired["review_calls"] == []
+
+
+def test_the_prompt_demands_plain_spoken_nepali_one_through_line_and_honesty_about_gaps(wired):
+    wired["plan"] = ScriptPlan(60, "r", angle="Kites fly at Dashain because the sky clears.", beats=["hook", "payoff"])
+
+    story_service.write_story(topic=TOPIC)
+
+    prompt = wired["prompts"][0]
+    assert "everyday spoken Nepali" in prompt
+    assert "Never use bookish or Sanskritised words" in prompt
+    assert "Kites fly at Dashain because the sky clears." in prompt
+    assert "- hook" in prompt and "- payoff" in prompt
+    assert "Never invent it" in prompt
+
+
+def test_a_draft_with_bookish_words_is_rewritten_with_the_plain_word(wired):
+    bookish = GOOD + " किंवदन्ती"
+    wired["drafts"] = [bookish, GOOD]
+
+    story = story_service.write_story(topic=TOPIC)
+
+    assert story.text == GOOD
+    assert "किंवदन्ती (say: भनिन्छ" in wired["prompts"][1]
+
+
+def test_a_stock_opener_is_sent_back(wired):
+    wired["drafts"] = ["के तपाईंलाई थाहा छ " + GOOD, GOOD]
+
+    assert story_service.write_story(topic=TOPIC).text == GOOD
+    assert "stock opener" in wired["prompts"][1]
+
+
+def test_long_sentences_are_sent_back_to_be_split(wired):
+    long_draft = " ".join(["शब्द"] * 15) + "। " + " ".join(["शब्द"] * 15) + "। " + " ".join(["शब्द"] * 8) + "।"
+    wired["plan"] = ScriptPlan(20)
+    wired["drafts"] = [long_draft, _text(44)]
+
+    story_service.write_story(topic=TOPIC)
+
+    assert "sentences are longer than 12 words" in wired["prompts"][1]
+
+
+def test_confusing_parts_found_by_the_reviewer_are_sent_back(wired):
+    wired["drafts"] = [GOOD, GOOD + " नयाँ"]
+    wired["reviews"] = [Review(confusing_parts=["तर यो त सुरुवात मात्र थियो"]), Review()]
+
+    story_service.write_story(topic=TOPIC)
+
+    assert "confusing or does not follow" in wired["prompts"][1]
+    assert "तर यो त सुरुवात मात्र थियो" in wired["prompts"][1]
+
+
+def test_claims_the_research_does_not_support_stop_the_run_instead_of_being_published(wired):
+    wired["reviews"] = [Review(unsupported_claims=["the state made it a national festival in 1900"])]
+
+    with pytest.raises(RuntimeError, match="claims the research does not support"):
+        story_service.write_story(topic=TOPIC)
+
+    assert len(wired["prompts"]) == story_service.MAX_REVISIONS + 1
+
+
+def test_a_claim_that_is_fixed_in_a_rewrite_passes(wired):
+    wired["drafts"] = [GOOD, GOOD + " नयाँ"]
+    wired["reviews"] = [Review(unsupported_claims=["the state made it national"]), Review()]
+
+    assert story_service.write_story(topic=TOPIC).text.endswith("नयाँ")
+
+
+def test_full_stops_in_the_script_become_purna_biram(wired):
+    wired["drafts"] = ["राजा मरे. रानी बाँचिन्. " + GOOD]
+
+    assert story_service.write_story(topic=TOPIC).text.startswith("राजा मरे। रानी बाँचिन्। ")
+
+
+def test_the_prompt_forbids_a_hook_that_only_restates_the_topic_and_allows_a_legend_as_the_hook(wired):
+    story_service.write_story(topic=TOPIC)
+
+    prompt = wired["prompts"][0]
+    assert "merely\n   restates the topic" in prompt
+    assert "A legend can be the hook" in prompt
+
+
+def test_letters_from_another_script_are_sent_back(wired):
+    wired["drafts"] = [GOOD + " अधուրो", GOOD]
+
+    assert story_service.write_story(topic=TOPIC).text == GOOD
+    assert "do not belong in Nepali or English text" in wired["prompts"][1]
+
+
+def test_the_prompt_drops_side_details_and_keeps_religion_out_unless_it_is_the_topic(wired):
+    story_service.write_story(topic=TOPIC)
+
+    assert "Leave out side details" in wired["prompts"][0]
+    assert "Keep religion out unless the topic is about it" in wired["prompts"][0]

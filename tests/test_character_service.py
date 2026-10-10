@@ -72,8 +72,27 @@ def test_plan_scenes_drops_unknown_character_ids(monkeypatch):
 
     plan = character_service.plan_scenes(["scene one", "scene two"], SHEET)
 
-    assert plan[0] == {"characters": ["king"], "shot": "s1", "clip": "video"}
-    assert plan[1] == {"characters": [], "shot": "scene two", "clip": "image"}
+    assert plan[0] == {"characters": ["king"], "shot": "s1", "clip": "video", "real_search": None}
+    assert plan[1] == {"characters": [], "shot": "scene two", "clip": "image", "real_search": None}
+
+
+def test_plan_scenes_keeps_the_real_photo_search_phrases(monkeypatch):
+    monkeypatch.setattr(
+        character_service,
+        "_ask_json",
+        lambda prompt: [{"shot": "a", "real_search": "  Patan Durbar Square "}, {"shot": "b", "real_search": ""}],
+    )
+
+    plan = character_service.plan_scenes(["x", "y"], SHEET)
+
+    assert [p["real_search"] for p in plan] == ["Patan Durbar Square", None]
+
+
+def test_frame_prompt_asks_for_the_dark_documentary_look():
+    prompt = build_frame_prompt(SHEET, {"characters": [], "shot": "a lamp"})
+
+    assert "Dark cinematic documentary" in prompt
+    assert "Never bright, glossy, oversaturated" in prompt
 
 
 def test_plan_scenes_makes_the_hook_video_and_normalises_clip(monkeypatch):
@@ -95,3 +114,11 @@ def test_plan_scenes_retries_when_scene_count_is_wrong(monkeypatch):
     plan = character_service.plan_scenes(["x", "y"], SHEET)
 
     assert [p["shot"] for p in plan] == ["a", "b"]
+
+
+def test_scene_planner_is_told_not_to_show_idols_or_worship_unless_the_line_is_about_it():
+    assert "Do not show idols, shrines or worship" in character_service.SCENE_PLAN_PROMPT
+
+
+def test_scene_planner_keeps_violent_moments_out_of_video_clips():
+    assert "killing, sacrifice, injury" in character_service.SCENE_PLAN_PROMPT

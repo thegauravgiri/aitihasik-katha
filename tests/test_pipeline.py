@@ -45,7 +45,7 @@ def wired_pipeline(tmp_path, monkeypatch):
         calls.append(("plan",))
         return [
             {"characters": ["king"], "shot": "king on balcony", "clip": "video"},
-            {"characters": [], "shot": "city", "clip": "image"},
+            {"characters": [], "shot": "city", "clip": "image", "real_search": "Kathmandu Durbar Square"},
         ]
 
     def _resolve_reference(character, style, image_path):
@@ -73,10 +73,16 @@ def wired_pipeline(tmp_path, monkeypatch):
             f.write("fake-raw-clip")
         return output_path
 
-    def _animate_still(image_path, duration, output_path, zoom_in=True):
+    def _animate_still(image_path, duration, output_path, zoom_in=True, motion=None):
         calls.append(("still", image_path, duration))
         with open(output_path, "w", encoding="utf-8") as f:
             f.write("fake-still-clip")
+        return output_path
+
+    def _real_video_clip(input_path, duration, output_path):
+        calls.append(("real_video", input_path, duration))
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("fake-real-video-clip")
         return output_path
 
     def _fit_clip_to_duration(input_path, duration, output_path):
@@ -85,7 +91,8 @@ def wired_pipeline(tmp_path, monkeypatch):
             f.write("fake-clip")
         return output_path
 
-    def _merge_video_clips(output_path, voice_over, subtitles, clip_filenames, hook_title=None):
+    def _merge_video_clips(output_path, voice_over, subtitles, clip_filenames, hook_title=None, branding=False,
+                           background_music=None):
         calls.append(("merge", tuple(clip_filenames), hook_title))
         return output_path
 
@@ -121,6 +128,9 @@ def wired_pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "fit_clip_to_duration", _fit_clip_to_duration)
     monkeypatch.setattr(pipeline, "animate_still", _animate_still)
     monkeypatch.setattr(pipeline, "merge_video_clips", _merge_video_clips)
+    monkeypatch.setattr(settings, "USE_REAL_MEDIA", True)
+    monkeypatch.setattr(pipeline, "find_real_media", lambda query, line: calls.append(("real_search", query)) and None)
+    monkeypatch.setattr(pipeline, "real_video_clip", _real_video_clip)
     monkeypatch.setattr(pipeline, "plan_cover", _plan_cover)
     monkeypatch.setattr(pipeline, "render_cover", _render_cover)
     monkeypatch.setattr(pipeline, "upload_file_to_gcs", lambda bucket, src, dst: "https://example.com/cover.jpg")
@@ -145,6 +155,7 @@ def test_run_pipeline_v1_happy_path(wired_pipeline):
     for kind, expected in [
         ("audio", 1), ("sheet", 1), ("reference", 1), ("plan", 1), ("frame", 2),
         ("clip", 2), ("fit", 2), ("merge", 1), ("instagram", 1), ("cover_plan", 1), ("cover", 1),
+        ("real_search", 1),
     ]:
         assert kinds.count(kind) == expected, kind
 
@@ -253,6 +264,30 @@ def test_a_cover_that_cannot_be_rendered_does_not_stop_the_post(wired_pipeline, 
     assert instagram_call[4] is None
 
 
+def test_blocked_scenes_are_listed_in_a_report_for_review(wired_pipeline, monkeypatch):
+    tmp_path, _ = wired_pipeline
+
+    def _blocked(prompt, first_frame_path, seconds, output_path):
+        raise pipeline.VideoBlockedError("Request blocked due to safety violations")
+
+    monkeypatch.setattr(pipeline, "generate_scene_clip", _blocked)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="blocked-report")
+
+    report = os.path.join(str(tmp_path), "blocked-report", settings.OUTPUT_PATH, "clip_fallbacks.json")
+    import json
+    why = "Request blocked due to safety violations"
+    assert json.load(open(report, encoding="utf-8")) == {"0": why, "1": why}  # both scenes are video in this fixture
+
+
+def test_a_run_with_no_blocked_scenes_writes_no_report(wired_pipeline):
+    tmp_path, _ = wired_pipeline
+
+    pipeline.run_pipeline_v1(topic="test", run_id="no-blocks")
+
+    assert not os.path.exists(os.path.join(str(tmp_path), "no-blocks", settings.OUTPUT_PATH, "clip_fallbacks.json"))
+
+
 def test_without_auto_publish_the_run_stops_for_review(wired_pipeline, monkeypatch):
     tmp_path, calls = wired_pipeline
     monkeypatch.setattr(settings, "AUTO_PUBLISH", False)
@@ -270,6 +305,80 @@ def test_without_auto_publish_the_run_stops_for_review(wired_pipeline, monkeypat
     assert record.instagram_uploaded is False
 
 
+def _real_photo(tmp_path, title="Durbar.jpg", kind="image"):
+    from aitihasik_katha.services.real_media_service import RealMedia
+
+    path = tmp_path / title
+    path.write_bytes(b"real")
+    return RealMedia(path=str(path), kind=kind, credit=f'"{title}" by A Photographer, CC BY 4.0, via Wikimedia Commons', title=title)
+
+
+def test_a_real_photo_replaces_the_generated_frame_and_is_credited(wired_pipeline, monkeypatch):
+    tmp_path, calls = wired_pipeline
+    photo = _real_photo(tmp_path)
+    monkeypatch.setattr(pipeline, "find_real_media", lambda query, line: calls.append(("real_search", query)) or photo)
+    monkeypatch.setattr(settings, "CLIP_MODE", "mixed")
+
+    pipeline.run_pipeline_v1(topic="test", run_id="real-photo")
+
+    assert ("real_search", "Kathmandu Durbar Square") in calls
+    # Only the king's scene is drawn; the city scene is the real photo, shown with a camera move.
+    assert [c[0] for c in calls].count("frame") == 1
+    assert ("still", photo.path, pytest.approx(3.0, abs=3.0)) in [(c[0], c[1], c[2]) for c in calls if c[0] == "still"]
+    output = os.path.join(str(tmp_path), "real-photo", settings.OUTPUT_PATH)
+    assert photo.credit in open(os.path.join(output, "caption.txt"), encoding="utf-8").read()
+    assert os.path.exists(os.path.join(output, "real_media.json"))
+
+
+def test_real_footage_is_used_as_a_clip_and_its_first_frame_can_be_the_cover(wired_pipeline, monkeypatch):
+    tmp_path, calls = wired_pipeline
+    footage = _real_photo(tmp_path, "Festival.webm", kind="video")
+    monkeypatch.setattr(pipeline, "find_real_media", lambda query, line: footage)
+    monkeypatch.setattr(pipeline, "_still_of_real_media", lambda item, idx, run_path: str(tmp_path / "first_frame.jpg"))
+
+    pipeline.run_pipeline_v1(topic="test", run_id="real-video")
+
+    assert any(c[0] == "real_video" and c[1] == footage.path for c in calls)
+
+
+def test_a_failed_real_media_lookup_falls_back_to_a_generated_shot(wired_pipeline, monkeypatch):
+    _, calls = wired_pipeline
+
+    def _broken(query, line):
+        raise OSError("commons unreachable")
+
+    monkeypatch.setattr(pipeline, "find_real_media", _broken)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="real-fail")
+
+    assert [c[0] for c in calls].count("frame") == 2
+    assert run_store.get_run("real-fail").video_ready is True
+
+
+def test_real_media_can_be_turned_off(wired_pipeline, monkeypatch):
+    _, calls = wired_pipeline
+    monkeypatch.setattr(settings, "USE_REAL_MEDIA", False)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="real-off")
+
+    assert "real_search" not in [c[0] for c in calls]
+
+
+def test_the_same_photo_is_never_used_twice_in_one_video(wired_pipeline, monkeypatch):
+    tmp_path, calls = wired_pipeline
+    photo = _real_photo(tmp_path)
+    monkeypatch.setattr(pipeline, "plan_scenes", lambda scenes, sheet: [
+        {"characters": [], "shot": "a", "clip": "image", "real_search": "Patan"},
+        {"characters": [], "shot": "b", "clip": "image", "real_search": "Patan Durbar"},
+    ])
+    monkeypatch.setattr(pipeline, "find_real_media", lambda query, line: photo)
+    monkeypatch.setattr(pipeline, "MAX_REAL_SHARE", 1.0)
+
+    pipeline.run_pipeline_v1(topic="test", run_id="real-dupe")
+
+    assert [c[0] for c in calls].count("frame") == 1  # the second scene falls back to a generated shot
+
+
 def test_run_pipeline_v1_resume_skips_completed_stages_and_does_not_republish(wired_pipeline):
     tmp_path, calls = wired_pipeline
 
@@ -283,7 +392,7 @@ def test_run_pipeline_v1_resume_skips_completed_stages_and_does_not_republish(wi
     # run was already fully published on the first call, so resuming it must not
     # post to Instagram again.
     kinds = [call[0] for call in calls]
-    for kind in ("audio", "sheet", "plan", "reference", "frame", "clip", "fit", "cover_plan", "cover"):
+    for kind in ("audio", "sheet", "plan", "reference", "frame", "clip", "fit", "cover_plan", "cover", "real_search"):
         assert kind not in kinds, kind
     assert "merge" in kinds
     assert "instagram" not in kinds

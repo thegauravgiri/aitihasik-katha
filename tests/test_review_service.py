@@ -42,3 +42,18 @@ def test_an_unexpected_reply_is_an_error(monkeypatch):
 
     with pytest.raises(ValueError, match="unexpected shape"):
         review_service.review_story("t", "s", "b")
+
+
+def test_confusing_parts_are_read_from_the_reply(monkeypatch):
+    monkeypatch.setattr(review_service, "ask_json", lambda prompt: {"confusing_parts": ["वाक्य एक", " ", "वाक्य दुई"]})
+
+    assert review_service.review_story("t", "s", "b").confusing_parts == ["वाक्य एक", "वाक्य दुई"]
+
+
+def test_the_reviewer_judges_from_the_view_of_a_viewer_who_knows_no_history(monkeypatch):
+    prompts = []
+    monkeypatch.setattr(review_service, "ask_json", lambda prompt: prompts.append(prompt) or {})
+
+    review_service.review_story("t", "s", "b")
+
+    assert "knows no history" in prompts[0]

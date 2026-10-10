@@ -15,7 +15,9 @@ def test_plan_turns_the_chosen_seconds_into_a_word_budget():
     assert plan.target_words == 132
     assert (plan.min_words, plan.max_words) == (112, 145)
     assert (plan.floor_words, plan.ceiling_words) == (92, 165)
-    assert plan.to_dict() == {"seconds": 60, "reason": "a story with turns", "target_words": 132}
+    assert plan.to_dict() == {
+        "seconds": 60, "reason": "a story with turns", "angle": "", "beats": [], "target_words": 132,
+    }
 
 
 def test_the_model_chooses_the_length_from_the_topic_and_the_research(monkeypatch):
@@ -56,3 +58,23 @@ def test_a_bad_reply_or_failure_falls_back_to_the_default_length(monkeypatch, re
     monkeypatch.setattr(script_planner, "ask_json", _ask)
 
     assert script_planner.plan_script("t", "b").seconds == script_planner.DEFAULT_SECONDS
+
+
+def test_the_plan_carries_the_through_line_and_beats(monkeypatch):
+    reply = {"seconds": 70, "reason": "r", "angle": "Why kites? Because the sky clears.", "beats": ["hook", " ", "payoff"]}
+    monkeypatch.setattr(script_planner, "ask_json", lambda prompt: reply)
+
+    plan = script_planner.plan_script("Why kites?", "brief")
+
+    assert plan.angle == "Why kites? Because the sky clears."
+    assert plan.beats == ["hook", "payoff"]
+
+
+def test_the_planner_is_told_to_pick_one_question_and_admit_gaps(monkeypatch):
+    prompts = []
+    monkeypatch.setattr(script_planner, "ask_json", lambda prompt: prompts.append(prompt) or {"seconds": 45})
+
+    script_planner.plan_script("t", "b")
+
+    assert "ONE question" in prompts[0]
+    assert "must say that plainly" in prompts[0]

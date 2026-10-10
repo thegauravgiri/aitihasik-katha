@@ -42,3 +42,16 @@ def test_get_subtitle_flattens_word_level_timings_across_results():
 
 def test_get_subtitle_returns_empty_list_for_no_results():
     assert get_subtitle(_FakeResponse([])) == []
+
+
+def test_get_subtitle_converts_full_stops_after_nepali_to_purna_biram():
+    response = _FakeResponse(
+        [
+            _FakeResult([_FakeWord("खान्छन्.", 3.8, 4.1), _FakeWord("बस्छन् .", 15.6, 16.3)]),
+        ]
+    )
+
+    assert get_subtitle(response) == [
+        ((3.8, 4.1), "खान्छन्।"),
+        ((15.6, 16.3), "बस्छन्।"),
+    ]

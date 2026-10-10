@@ -5,6 +5,7 @@ from PIL import Image, ImageEnhance
 
 from ..core.logging import get_logger
 from ..utils.llm_json import ask_json
+from ..utils.nepali import stray_characters
 from ..utils.retry import retry
 from .title_card import title_layer
 
@@ -27,8 +28,9 @@ The narration, one numbered scene per line:
 Return ONLY a JSON object with this shape:
 {{"title": "...", "highlight": "...", "scene": 1}}
 
-- title: 3 to 6 Nepali words that promise the single most shocking or curious thing in the video.
-  Compress, do not copy the first sentence. No quotation marks, emojis or full stop.
+- title: 3 to 6 words in everyday spoken Nepali (an English word is fine if people really say it) that
+  promise the single most shocking or curious thing in the video. No bookish words. Compress, do not copy
+  the first sentence. No quotation marks, emojis or full stop.
 - highlight: the one word from the title that carries the shock; it is shown in colour.
 - scene: the number of the scene whose picture would make the most striking cover: a face, a dramatic
   object or a dramatic moment, not a map or an empty landscape.
@@ -48,6 +50,8 @@ def _ask_for_cover(scenes: list[str]) -> dict:
     words = str(data.get("title") or "").split()[:MAX_TITLE_WORDS]
     if not words:
         raise ValueError("Cover plan has no title")
+    if stray_characters(" ".join(words)):
+        raise ValueError("Cover title has letters from another script")
     highlight = str(data.get("highlight") or "").strip(".,!?।:;")
     try:
         scene = int(data.get("scene", 1)) - 1

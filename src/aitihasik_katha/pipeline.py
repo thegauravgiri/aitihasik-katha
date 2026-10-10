@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
@@ -17,6 +18,7 @@ from .services.character_service import (
     plan_scenes,
 )
 from .services.image_service import generate_scene_frame
+from .services.real_media_service import find_real_media
 from .services.instagram_service import get_instagram_service
 from .services.reference_service import resolve_reference
 from .services.video_generation_service import VideoBlockedError, clip_duration, generate_scene_clip
@@ -24,9 +26,10 @@ from .services.scene_timing import Subtitle, compute_scene_durations, split_into
 from .services.story_service import write_story
 from .services.subtitle_service import generate_transcription, get_subtitle
 from .services.thumbnail_service import plan_cover, render_cover
-from .services.video_service import animate_still, fit_clip_to_duration, merge_video_clips
+from .services.video_service import MOTIONS, animate_still, fit_clip_to_duration, merge_video_clips, real_video_clip
 from .storage import run_store
 from .utils.gcs import upload_file_to_gcs, upload_folder_to_gcs
+from .utils.nepali import nepali_punctuation
 
 
 logger = get_logger(__name__)
@@ -64,8 +67,16 @@ def _generate_audio_stage(
         generate_audio(story, audio_output_filepath)
 
     total_audio_duration = get_audio_duration(audio_output_filepath)
-    transcription = generate_transcription(audio_output_filepath)
-    subtitles = get_subtitle(transcription)
+    subs_path = Path(run_path) / settings.OUTPUT_PATH / "subtitles.json"
+    if subs_path.exists():
+        logger.info("Reusing existing subtitles at %s", subs_path)
+        raw_subs = json.loads(subs_path.read_text(encoding="utf-8"))
+        subtitles = [((float(item[0][0]), float(item[0][1])), nepali_punctuation(item[1])) for item in raw_subs]
+    else:
+        transcription = generate_transcription(audio_output_filepath)
+        subtitles = get_subtitle(transcription)
+        subs_path.parent.mkdir(parents=True, exist_ok=True)
+        subs_path.write_text(json.dumps(subtitles, ensure_ascii=False, indent=2), encoding="utf-8")
     return audio_output_filepath, total_audio_duration, subtitles
 
 
@@ -77,8 +88,62 @@ MAX_REFERENCE_IMAGES = 3
 CLIP_MODES = ("image", "mixed", "video")
 
 
-def _clip_kind(idx: int, scene_plan: dict) -> str:
-    """"video" or "image" for a scene under the current CLIP_MODE."""
+MAX_REAL_SHARE = 0.4
+
+
+def _find_real_media_stage(scenes: list[str], plan: list[dict], run_path: str) -> dict[int, dict]:
+    """Real photos and footage for the scenes the planner marked as photographable, keyed by scene
+    index. Nothing found, or any failure, simply leaves that scene to a generated shot."""
+    path = Path(run_path) / settings.OUTPUT_PATH / "real_media.json"
+    if path.exists():
+        logger.info("Reusing existing %s", path)
+        return {int(idx): item for idx, item in json.loads(path.read_text(encoding="utf-8")).items()}
+    if not settings.USE_REAL_MEDIA:
+        return {}
+
+    wanted = [idx for idx, entry in enumerate(plan) if entry.get("real_search")]
+    wanted = wanted[: max(1, round(len(scenes) * MAX_REAL_SHARE))]
+
+    def _lookup(idx: int):
+        try:
+            return idx, find_real_media(plan[idx]["real_search"], scenes[idx])
+        except Exception as exc:  # noqa: BLE001 - a missing photo must never fail the video
+            logger.warning("Real media lookup failed for scene %d (%s): %s", idx, plan[idx]["real_search"], exc)
+            return idx, None
+
+    found: dict[int, dict] = {}
+    taken: set[str] = set()
+    if wanted:
+        with ThreadPoolExecutor(max_workers=_scene_worker_count(len(wanted))) as executor:
+            for idx, media in sorted(executor.map(_lookup, wanted)):
+                if media and media.title not in taken:
+                    taken.add(media.title)
+                    found[idx] = {"path": media.path, "kind": media.kind, "credit": media.credit, "title": media.title}
+    logger.info("Found real media for %d of %d scene(s)", len(found), len(scenes))
+    path.write_text(json.dumps(found, ensure_ascii=False, indent=2), encoding="utf-8")
+    return found
+
+
+def _still_of_real_media(item: dict, idx: int, run_path: str) -> str:
+    """An image to stand in for the scene (the cover may use it): a photo is itself, a video gives its first frame."""
+    if item["kind"] == "image":
+        return item["path"]
+    from moviepy import VideoFileClip
+
+    still = os.path.join(run_path, settings.IMAGE_PATH, f"real_{idx}.jpg")
+    if not os.path.exists(still):
+        clip = VideoFileClip(item["path"], audio=False)
+        try:
+            clip.save_frame(still, t=min(1.0, clip.duration / 2))
+        finally:
+            clip.close()
+    return still
+
+
+def _clip_kind(idx: int, scene_plan: dict, real: dict | None = None) -> str:
+    """"real_image", "real_video", "video" or "image" for a scene under the current CLIP_MODE."""
+    if real and idx in real:
+        return f"real_{real[idx]['kind']}"
     if settings.CLIP_MODE == "mixed":
         return "video" if idx == 0 or scene_plan.get("clip") == "video" else "image"
     return settings.CLIP_MODE
@@ -95,7 +160,7 @@ def _load_or_create_json(path: Path, create):
 
 def _generate_visuals_stage(
     story: str, scenes: list[str], run_path: str
-) -> tuple[dict, list[dict], list[str]]:
+) -> tuple[dict, list[dict], list[str], dict[int, dict]]:
     """Decide how every character looks, get one reference image per character,
     plan each scene's shot, and draw each scene's opening frame from those references.
 
@@ -131,8 +196,14 @@ def _generate_visuals_stage(
     (output_dir / "references.json").write_text(json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8")
 
     plan = _load_or_create_json(output_dir / "scene_plan.json", lambda: plan_scenes(scenes, sheet))
+    real = _find_real_media_stage(scenes, plan, run_path)
+    if real:
+        credits += [item["credit"] for item in real.values()]
+        (output_dir / "references.json").write_text(json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _frame_for(idx: int) -> str:
+        if idx in real:
+            return _still_of_real_media(real[idx], idx, run_path)
         frame_path = os.path.join(run_path, settings.IMAGE_PATH, f"scene_{idx}.png")
         if os.path.exists(frame_path):
             logger.info("Reusing existing scene frame %s", frame_path)
@@ -148,7 +219,7 @@ def _generate_visuals_stage(
         for future in as_completed(futures):
             frame_paths[futures[future]] = future.result()
 
-    return sheet, plan, frame_paths
+    return sheet, plan, frame_paths, real
 
 
 def _generate_clips_stage(
@@ -159,6 +230,7 @@ def _generate_clips_stage(
     run_path: str,
     subtitles: list[Subtitle],
     total_audio_seconds: float,
+    real: dict[int, dict] | None = None,
 ) -> list[str]:
     """Turn each scene's opening frame into a clip of exactly that scene's narration time:
     animated by VIDEO_MODEL for "video" scenes, a slow camera move over the still for
@@ -169,6 +241,7 @@ def _generate_clips_stage(
     """
     durations = compute_scene_durations(scenes, subtitles, total_audio_seconds)
     clip_paths: list[str] = [""] * len(scenes)
+    fallbacks: dict[int, str] = {}
 
     def _create_one(idx: int) -> str:
         final_path = os.path.join(run_path, settings.VIDEO_PATH, f"video_clip_{idx}.mp4")
@@ -176,8 +249,13 @@ def _generate_clips_stage(
             logger.info("Reusing existing clip %s", final_path)
             return final_path
 
-        if _clip_kind(idx, plan[idx]) == "image":
-            return animate_still(frame_paths[idx], durations[idx], final_path, zoom_in=idx % 2 == 0)
+        kind = _clip_kind(idx, plan[idx], real)
+        if kind == "real_video":
+            return real_video_clip(real[idx]["path"], durations[idx], final_path)
+        if kind == "real_image":
+            return animate_still(real[idx]["path"], durations[idx], final_path, motion=MOTIONS[idx % len(MOTIONS)])
+        if kind == "image":
+            return animate_still(frame_paths[idx], durations[idx], final_path, motion=MOTIONS[idx % len(MOTIONS)])
 
         raw_path = os.path.join(run_path, settings.VIDEO_PATH, f"raw_clip_{idx}.mp4")
         if not os.path.exists(raw_path):
@@ -186,7 +264,8 @@ def _generate_clips_stage(
                 generate_scene_clip(build_scene_prompt(sheet, plan[idx], seconds), frame_paths[idx], seconds, raw_path)
             except VideoBlockedError as exc:
                 logger.warning("Scene %s was blocked by the video model (%s); using a camera move over the still", idx, exc)
-                return animate_still(frame_paths[idx], durations[idx], final_path, zoom_in=idx % 2 == 0)
+                fallbacks[idx] = str(exc)[:300]
+                return animate_still(frame_paths[idx], durations[idx], final_path, motion=MOTIONS[idx % len(MOTIONS)])
         return fit_clip_to_duration(raw_path, durations[idx], final_path)
 
     with ThreadPoolExecutor(max_workers=_scene_worker_count(len(scenes))) as executor:
@@ -194,6 +273,12 @@ def _generate_clips_stage(
         for future in as_completed(futures):
             clip_paths[futures[future]] = future.result()
 
+    if fallbacks:
+        logger.warning("%d scene(s) used a camera move over the still because the video model blocked them: %s",
+                       len(fallbacks), sorted(fallbacks))
+        report = Path(run_path) / settings.OUTPUT_PATH / "clip_fallbacks.json"
+        report.write_text(json.dumps({str(i): why for i, why in sorted(fallbacks.items())}, ensure_ascii=False, indent=2),
+                          encoding="utf-8")
     return clip_paths
 
 
@@ -216,6 +301,13 @@ def _cover_stage(run_path: str, cover: dict, frame_paths: list[str]) -> str | No
         return None
 
 
+def _pick_music() -> str | None:
+    """A random track from BACKGROUND_MUSIC_DIR, if any were added."""
+    folder = Path(settings.BACKGROUND_MUSIC_DIR)
+    tracks = sorted(p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a")) if folder.is_dir() else []
+    return str(random.choice(tracks)) if tracks else None
+
+
 def _assemble_video_stage(
     run_path: str, audio_filepath: str, subtitles: list[Subtitle], clip_filenames: list[str], cover: dict | None = None
 ) -> str | None:
@@ -226,6 +318,8 @@ def _assemble_video_stage(
         subtitles=subtitles,
         clip_filenames=clip_filenames,
         hook_title=cover,
+        branding=True,
+        background_music=_pick_music(),
     )
 
 
@@ -239,7 +333,7 @@ def _write_caption(run_path: str, story: str) -> str:
     credits_path = Path(run_path) / settings.OUTPUT_PATH / "references.json"
     credits = json.loads(credits_path.read_text(encoding="utf-8")) if credits_path.exists() else []
     if credits:
-        caption += "\n\nReference images:\n" + "\n".join(credits)
+        caption += "\n\nPhoto credits:\n" + "\n".join(credits)
     caption_path.write_text(caption, encoding="utf-8")
     return caption
 
@@ -321,7 +415,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
             audio_future = executor.submit(_generate_audio_stage, story, run_path)
             visuals_future = executor.submit(_generate_visuals_stage, story, scenes, run_path)
             audio_filepath, total_audio_duration, subtitles = audio_future.result()
-            sheet, plan, frame_paths = visuals_future.result()
+            sheet, plan, frame_paths, real = visuals_future.result()
         run_store.upsert_run(current_run_id, status="audio_ready")
         _cover_stage(run_path, cover, frame_paths)
 
@@ -333,6 +427,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
             run_path,
             subtitles,
             total_audio_duration.total_seconds(),
+            real,
         )
         run_store.upsert_run(current_run_id, status="media_ready")
 

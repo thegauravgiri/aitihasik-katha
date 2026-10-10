@@ -8,6 +8,7 @@ from ..core.settings import settings
 from ..utils.genai_client import get_genai_client
 from ..utils.retry import retry
 from .image_service import RATE_LIMIT_KEYWORDS
+from .video_errors import VideoBlockedError, is_block_error
 
 
 logger = get_logger(__name__)
@@ -23,17 +24,19 @@ def veo_duration(seconds: float) -> int:
 
 
 def _is_retryable(exc: BaseException) -> bool:
-    """A request the API rejected as malformed will fail identically every time."""
+    """A request the API rejected as malformed or blocked will fail identically every time."""
+    if isinstance(exc, VideoBlockedError):
+        return False
     return not (isinstance(exc, errors.ClientError) and exc.code == 400 and "INVALID_ARGUMENT" in str(exc))
 
 
-def _wait_for(operation):
+def _wait_for(operation, model: str):
     client = get_genai_client()
     deadline = time.monotonic() + settings.GENAI_REQUEST_TIMEOUT_SECONDS
     while not operation.done:
         if time.monotonic() > deadline:
             raise TimeoutError(
-                f"{settings.VIDEO_MODEL} did not finish within {settings.GENAI_REQUEST_TIMEOUT_SECONDS}s"
+                f"{model} did not finish within {settings.GENAI_REQUEST_TIMEOUT_SECONDS}s"
             )
         time.sleep(POLL_INTERVAL_SECONDS)
         operation = client.operations.get(operation)
@@ -48,11 +51,12 @@ def _wait_for(operation):
     backoff_delay_seconds=90,
     should_retry=_is_retryable,
 )
-def _generate_video(prompt: str, first_frame_png: bytes, seconds: int, output_path: str) -> None:
+def _generate_video(prompt: str, first_frame_png: bytes, seconds: int, output_path: str, model: str | None = None) -> None:
     settings.require("VIDEO_MODEL")
+    model = model or settings.VIDEO_MODEL
     client = get_genai_client()
     operation = client.models.generate_videos(
-        model=settings.VIDEO_MODEL,
+        model=model,
         source=types.GenerateVideosSource(
             prompt=prompt,
             image=types.Image(image_bytes=first_frame_png, mime_type="image/png"),
@@ -64,22 +68,25 @@ def _generate_video(prompt: str, first_frame_png: bytes, seconds: int, output_pa
             number_of_videos=1,
         ),
     )
-    operation = _wait_for(operation)
+    operation = _wait_for(operation, model)
     if operation.error:
-        raise RuntimeError(f"{settings.VIDEO_MODEL} failed: {operation.error}")
+        message = f"{model} failed: {operation.error}"
+        raise (VideoBlockedError if is_block_error(Exception(message)) else RuntimeError)(message)
 
     videos = (operation.response and operation.response.generated_videos) or []
     if not videos:
         reasons = getattr(operation.response, "rai_media_filtered_reasons", None)
-        raise RuntimeError(f"{settings.VIDEO_MODEL} returned no video (filtered: {reasons})")
+        message = f"{model} returned no video (filtered: {reasons})"
+        # An empty result with filter reasons is the safety filter at work, not a glitch.
+        raise (VideoBlockedError if reasons else RuntimeError)(message)
 
     video = videos[0].video
     client.files.download(file=video)
     video.save(output_path)
 
 
-def generate_scene_clip(prompt: str, first_frame_path: str, seconds: int, output_path: str) -> str:
+def generate_scene_clip(prompt: str, first_frame_path: str, seconds: int, output_path: str, model: str | None = None) -> str:
     """Animate a scene's opening frame into a `seconds`-long clip (one of VEO_DURATIONS)."""
-    _generate_video(prompt, Path(first_frame_path).read_bytes(), seconds, output_path)
+    _generate_video(prompt, Path(first_frame_path).read_bytes(), seconds, output_path, model)
     logger.info("Generated %ss clip %s", seconds, output_path)
     return output_path
