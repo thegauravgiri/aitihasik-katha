@@ -27,9 +27,9 @@ _MOOD_KEYWORDS = {
     ],
     MOOD_MYSTIC: [
         "मन्दिर", "मूर्ति", "तान्त्रिक", "पूजा", "देवी", "कुमारी", "काष्ठमण्डप", "श्राप",
-        "गुठी", "जात्रा", "सुनको चरा", "चमत्कार", "रहस्यमय मन्दिर", "मन्त्र",
+        "गुठी", "जात्रा", "सुनको चरा", "चमत्कार", "रहस्यमय मन्दिर", "मन्त्र", "घटस्थापना", "जमरा", "कलश", "दुर्गा",
         "temple", "statue", "tantric", "curse", "ritual", "deity", "sacred", "priest",
-        "myth", "mystic", "shrine", "goddess", "kumari", "incantation"
+        "myth", "mystic", "shrine", "goddess", "kumari", "incantation", "ghatasthapana", "jamara", "navaratri"
     ],
     MOOD_HERITAGE: [
         "फुटबल", "खेल", "कला", "चाड", "दसैँ", "पिङ", "संस्कृति", "गीत", "इतिहास",
