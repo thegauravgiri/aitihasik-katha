@@ -13,3 +13,5 @@ service_account.json
 *egg-info/
 runs/*
 reports/
+.coverage
+.pytest_cache/

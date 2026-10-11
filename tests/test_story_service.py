@@ -22,20 +22,11 @@ LONG_STORY = _text(190)
 TOPIC = "Why are kites flown during Dashain?"
 
 
-class _FakeStore:
-    def get_random_document(self):
-        return {"documents": "a random archive passage"}
-
-    def get_similar_documents(self, seed):
-        return ["King Yognarendra Malla and the golden bird"]
-
-
 @pytest.fixture
 def wired(monkeypatch):
     """Drafts come from `drafts` in order (the last one repeats); reviews from `reviews`."""
     state = {"prompts": [], "drafts": [GOOD], "reviews": [Review()], "review_calls": [], "plan": ScriptPlan(45, "a story with turns")}
-    monkeypatch.setattr(story_service, "get_store", lambda: _FakeStore())
-    monkeypatch.setattr(story_service, "research", lambda topic, archive_passage: Research(brief="kite facts"))
+    monkeypatch.setattr(story_service, "research", lambda topic=None: Research(brief="kite facts"))
     monkeypatch.setattr(settings, "USE_WEB_RESEARCH", True)
     monkeypatch.setattr(settings, "USE_STORY_REVIEW", True)
 
@@ -50,7 +41,7 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(story_service, "_invoke", _invoke)
     monkeypatch.setattr(story_service, "review_story", _review)
-    monkeypatch.setattr(story_service, "plan_script", lambda topic, brief, archive: state["plan"])
+    monkeypatch.setattr(story_service, "plan_script", lambda topic, brief: state["plan"])
     return state
 
 
@@ -61,18 +52,21 @@ def test_the_requested_topic_reaches_the_story_prompt(wired):
     assert "kite facts" in wired["prompts"][0]
 
 
-def test_the_prompt_asks_for_the_planned_length_a_loop_ending_and_no_spoken_call_to_action(wired):
+def test_the_prompt_asks_for_the_planned_length_and_spoken_call_to_action(wired):
     story_service.write_story(topic=TOPIC)
 
     prompt, plan = wired["prompts"][0], wired["plan"]
     assert "about 45 seconds" in prompt
     assert f"{plan.min_words} to {plan.max_words} words" in prompt
-    assert "LOOP ENDING" in prompt
-    assert "No call to like, comment or follow" in prompt
+    assert "SPOKEN CALL TO ACTION (CTA)" in prompt
+    assert "DEBATE / COMMENT HOOK" in prompt
+    assert "CLARITY & TRUSTABILITY" in prompt
+    assert "DATES & HISTORICAL ACCURACY" in prompt
+    assert "Bikram Sambat" in prompt
 
 
-def test_failed_research_for_a_topic_stops_instead_of_writing_from_the_archive(wired, monkeypatch):
-    def _broken(topic, archive_passage):
+def test_failed_research_for_a_topic_stops_instead_of_writing(wired, monkeypatch):
+    def _broken(topic=None):
         raise RuntimeError("search unavailable")
 
     monkeypatch.setattr(story_service, "research", _broken)
@@ -83,8 +77,8 @@ def test_failed_research_for_a_topic_stops_instead_of_writing_from_the_archive(w
     assert wired["prompts"] == []
 
 
-def test_failed_research_without_a_topic_still_writes_from_the_archive(wired, monkeypatch):
-    def _broken(topic, archive_passage):
+def test_failed_research_without_a_topic_continues(wired, monkeypatch):
+    def _broken(topic=None):
         raise RuntimeError("search unavailable")
 
     monkeypatch.setattr(story_service, "research", _broken)
@@ -92,7 +86,6 @@ def test_failed_research_without_a_topic_still_writes_from_the_archive(wired, mo
     story = story_service.write_story()
 
     assert story.text == GOOD
-    assert "golden bird" in wired["prompts"][0]
 
 
 def test_a_draft_that_passes_review_is_used_as_is(wired):
@@ -249,6 +242,16 @@ def test_confusing_parts_found_by_the_reviewer_are_sent_back(wired):
 
     assert "confusing or does not follow" in wired["prompts"][1]
     assert "तर यो त सुरुवात मात्र थियो" in wired["prompts"][1]
+
+
+def test_a_draft_with_missing_cta_is_sent_back(wired):
+    wired["drafts"] = [GOOD, GOOD + " नयाँ"]
+    wired["reviews"] = [Review(missing_cta=True), Review()]
+
+    story_service.write_story(topic=TOPIC)
+
+    assert "without an organic spoken call to action" in wired["prompts"][1]
+
 
 
 def test_claims_the_research_does_not_support_stop_the_run_instead_of_being_published(wired):

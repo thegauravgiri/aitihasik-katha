@@ -4,6 +4,7 @@ from functools import lru_cache
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from ..core.settings import settings
+from ..core.visual_styles import get_style
 from ..utils.retry import retry
 
 
@@ -32,8 +33,7 @@ Rules:
 - Include at most {max_characters} main characters: the people who appear in more than one moment of the story.
 - Be historically accurate to Nepal and South Asia for the period. No European armour or clothing.
 - Descriptions must be concrete and visual; never describe personality.
-- Characters look like real, ordinary, weathered people of the period: individual faces, lived-in skin,
-  worn clothes. Never glamorous, never model-like, never perfectly clean.
+- {character_guidance}
 
 Story:
 {story}
@@ -69,6 +69,11 @@ Rules:
 - Vary the shot size and angle from one scene to the next: extreme close-up on a detail, medium, wide,
   low angle, over the shoulder. Avoid crowds of identically dressed extras and avoid everything being
   front-lit and sunny; dark, atmospheric light suits history.
+- Physical grounding and shot stability: Video models frequently fail on unanchored full-body locomotion
+  across wide angles (causing characters to float in mid-air, moonwalk, or legs to melt). To guarantee visual realism:
+  * For moving characters, prefer medium shots (waist-up, chest-up), three-quarter framing, or over-the-shoulder perspectives where feet are not detached or floating in empty space.
+  * When showing full-body or walking characters, explicitly anchor them to the physical environment: feet firmly planted on paved stone paths, dirt, or wooden floors with visible contact, or seated firmly on cushions, chairs, or horseback.
+  * Emphasize smooth, cinematic camera movements (slow dolly push, steady tracking shot, gentle arc, or cinematic pan) to generate scene momentum, while character actions should be natural, purposeful, and grounded (turning to look, speaking, breathing, gesturing, reaching, or measured steps with physical weight) rather than wild, chaotic running or ambiguous floating locomotion.
 - "real_search": a short, specific English search phrase (2 to 5 words) for Wikimedia Commons that would
   find a REAL photograph or archive image of what the sentence is about, but ONLY for things that can
   really be photographed and look the same today or in old photographs: a named place, building, statue,
@@ -119,12 +124,19 @@ def _ask_json(prompt: str):
 
 
 @retry(exceptions=(Exception,), max_attempts=3, delay_seconds=5)
-def build_character_sheet(story: str) -> dict:
-    sheet = _ask_json(CHARACTER_SHEET_PROMPT.format(story=story, max_characters=MAX_CHARACTERS))
+def build_character_sheet(story: str, visual_style: str | None = None) -> dict:
+    style_obj = get_style(visual_style or settings.VISUAL_STYLE)
+    prompt = CHARACTER_SHEET_PROMPT.format(
+        story=story,
+        max_characters=MAX_CHARACTERS,
+        character_guidance=style_obj.character_style_guidance,
+    )
+    sheet = _ask_json(prompt)
     if not isinstance(sheet, dict) or not isinstance(sheet.get("characters"), list):
         raise ValueError(f"Character sheet has unexpected shape: {sheet!r}")
     sheet.setdefault("style", "")
     sheet.setdefault("supporting", "")
+    sheet.setdefault("visual_style", style_obj.name)
     sheet["characters"] = [c for c in sheet["characters"] if c.get("id") and c.get("description")][
         :MAX_CHARACTERS
     ]
@@ -161,42 +173,56 @@ def _visible_characters(sheet: dict, scene_plan: dict) -> list[dict]:
     return [by_id[cid] for cid in scene_plan["characters"] if cid in by_id]
 
 
-def build_frame_prompt(sheet: dict, scene_plan: dict) -> str:
+def build_frame_prompt(sheet: dict, scene_plan: dict, visual_style: str | None = None) -> str:
     """Prompt for a scene's opening frame, drawn from the characters' reference images.
 
     Character descriptions are repeated verbatim in every scene so the image model
     gets identical wording alongside the same reference images."""
     visible = _visible_characters(sheet, scene_plan)
+    style_obj = get_style(visual_style or sheet.get("visual_style") or settings.VISUAL_STYLE)
     lines = [
-        "Vertical 9:16 photorealistic cinematic film still: the opening frame of a documentary shot. "
-        "One single full-frame image - never a collage, grid, split screen or comic panels. "
-        "No text, no captions, no watermark.",
-        HOUSE_LOOK,
+        style_obj.frame_prefix,
+        style_obj.house_look,
         f"Setting: {sheet['style']}",
     ]
     if visible:
-        lines.append(
+        char_inst = (
             "Characters (reference images are attached in this same order; each character must look "
             "exactly like their reference image: same face, hair, beard and clothing. A reference may "
             "be a painting or statue; always render the person as a real, living human):"
+            if style_obj.name in ("realistic", "vintage_documentary")
+            else (
+                f"Characters (reference images are attached in this same order; each character must look "
+                f"like their reference image adapted into the {style_obj.label} style: same distinctive features, attire and colors):"
+            )
         )
+        lines.append(char_inst)
         lines.extend(f"- {c['name']}: {c['description']}" for c in visible)
     other_people = "Everyone wears period-accurate clothing; no modern clothing."
     if sheet.get("supporting"):
         other_people = f"Other people in the scene: {sheet['supporting']} {other_people}"
     lines.append(other_people)
+    lines.append(
+        "Spatial grounding: Every subject and object is solidly grounded on the floor or terrain with realistic physical weight and natural contact shadows; no floating subjects or detached perspective."
+    )
     lines.append(f"Shot: {scene_plan['shot']}")
     return "\n".join(lines)
 
 
-def build_scene_prompt(sheet: dict, scene_plan: dict, seconds: int) -> str:
+def build_scene_prompt(sheet: dict, scene_plan: dict, seconds: int, visual_style: str | None = None) -> str:
     """Prompt for animating a scene's opening frame into a clip."""
     visible = _visible_characters(sheet, scene_plan)
+    style_obj = get_style(visual_style or sheet.get("visual_style") or settings.VISUAL_STYLE)
     lines = [
-        f"Animate this opening frame into a {seconds}-second vertical 9:16 photorealistic cinematic shot "
-        "with natural, realistic motion from the very first frame and a slow, steady, filmic camera move. "
-        "Faces and hands stay stable and undistorted, nothing morphs or melts. Keep every person looking "
-        "exactly as in the frame and keep the dark, moody lighting. No text, no captions, no dialogue, no music.",
+        f"Animate this opening frame into a {seconds}-second vertical 9:16 {style_obj.video_motion_prompt}. "
+        "Ground contact, physical gravity, and spatial stability are strictly enforced: characters stay solidly "
+        "anchored to the floor or ground with realistic physical weight and natural friction; strictly no floating in mid-air, "
+        "no foot sliding, no moonwalking. "
+        "Anatomical and structural consistency: faces, limbs, and hands remain structurally stable and undistorted without "
+        "warping, morphing, melting, or multiplying. "
+        "Keep camera movement deliberate and smooth (cinematic push-in, slow dolly, or subtle pan). "
+        "Keep every person, clothing, and environment looking exactly as in the opening frame. "
+        "No text, no captions, no dialogue, no music.",
         f"Style: {sheet['style']}",
     ]
     if visible:

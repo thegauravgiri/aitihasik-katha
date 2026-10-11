@@ -19,6 +19,7 @@ class RunRecord:
     instagram_uploaded: bool
     created_at: str
     updated_at: str
+    visual_style: str | None = None
 
 
 def _db_path() -> str:
@@ -52,10 +53,14 @@ def init_db() -> None:
                 video_ready INTEGER NOT NULL DEFAULT 0,
                 instagram_uploaded INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                visual_style TEXT
             )
             """
         )
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()]
+        if "visual_style" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN visual_style TEXT")
 
 
 def _row_to_record(row: sqlite3.Row) -> RunRecord:
@@ -70,6 +75,7 @@ def _row_to_record(row: sqlite3.Row) -> RunRecord:
         instagram_uploaded=bool(row["instagram_uploaded"]),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+        visual_style=row["visual_style"] if "visual_style" in row.keys() else None,
     )
 
 
@@ -92,14 +98,15 @@ def upsert_run(run_id: str, **fields_to_set) -> None:
                 "instagram_uploaded": 0,
                 "created_at": now,
                 "updated_at": now,
+                "visual_style": None,
                 **fields_to_set,
             }
             conn.execute(
                 """
                 INSERT INTO runs (run_id, topic, status, error, final_video_path, media_uri,
-                                   video_ready, instagram_uploaded, created_at, updated_at)
+                                   video_ready, instagram_uploaded, created_at, updated_at, visual_style)
                 VALUES (:run_id, :topic, :status, :error, :final_video_path, :media_uri,
-                        :video_ready, :instagram_uploaded, :created_at, :updated_at)
+                        :video_ready, :instagram_uploaded, :created_at, :updated_at, :visual_style)
                 """,
                 record,
             )
@@ -112,7 +119,7 @@ def upsert_run(run_id: str, **fields_to_set) -> None:
                 UPDATE runs SET topic=:topic, status=:status, error=:error,
                                 final_video_path=:final_video_path, media_uri=:media_uri,
                                 video_ready=:video_ready, instagram_uploaded=:instagram_uploaded,
-                                updated_at=:updated_at
+                                updated_at=:updated_at, visual_style=:visual_style
                 WHERE run_id=:run_id
                 """,
                 merged,

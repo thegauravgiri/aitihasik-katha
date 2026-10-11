@@ -19,10 +19,11 @@ def test_upsert_and_get_run_roundtrip():
     assert record.status == "running"
     assert record.video_ready is False
     assert record.instagram_uploaded is False
+    assert record.visual_style is None
 
 
 def test_upsert_run_merges_fields_without_clobbering_others():
-    run_store.upsert_run("run-1", topic="unification", status="running")
+    run_store.upsert_run("run-1", topic="unification", status="running", visual_style="disney")
     run_store.upsert_run("run-1", status="video_ready", video_ready=True, final_video_path="/tmp/out.mp4")
 
     record = run_store.get_run("run-1")
@@ -30,6 +31,7 @@ def test_upsert_run_merges_fields_without_clobbering_others():
     assert record.status == "video_ready"
     assert record.video_ready is True
     assert record.final_video_path == "/tmp/out.mp4"
+    assert record.visual_style == "disney"
 
 
 def test_get_run_returns_none_for_unknown_id():

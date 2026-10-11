@@ -34,8 +34,9 @@ question (for example an official declaration or a date), the through-line must 
 pretending it does. A legend is told as a legend, in plain words like "people say".
 
 BEATS. 4 to 7 short English beats in order, each a single idea that follows from the last: the hook (the most
-surprising concrete fact, stated first), the context, the turns that raise the stakes, the payoff that
-answers the question, and a closing line that points back to the hook so the video feels like it starts again.
+surprising concrete fact, stated first), the context, the turns that raise the stakes with deeply researched
+details, the payoff that answers the question, and an organic closing beat that delivers a spoken call to
+action (a debate question, share trigger, or save/follow prompt) connecting back to the story.
 
 Return ONLY a JSON object with this shape:
 {{"seconds": 45, "reason": "one short sentence", "angle": "the question and its one-sentence answer",

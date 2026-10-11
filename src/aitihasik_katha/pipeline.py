@@ -1,6 +1,5 @@
 import json
 import os
-import random
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
@@ -20,6 +19,7 @@ from .services.character_service import (
 from .services.image_service import generate_scene_frame
 from .services.real_media_service import find_real_media
 from .services.instagram_service import get_instagram_service
+from .services.music_service import get_background_music
 from .services.reference_service import resolve_reference
 from .services.video_generation_service import VideoBlockedError, clip_duration, generate_scene_clip
 from .services.scene_timing import Subtitle, compute_scene_durations, split_into_scenes
@@ -30,6 +30,7 @@ from .services.video_service import MOTIONS, animate_still, fit_clip_to_duration
 from .storage import run_store
 from .utils.gcs import upload_file_to_gcs, upload_folder_to_gcs
 from .utils.nepali import nepali_punctuation
+from .core.visual_styles import get_style
 
 
 logger = get_logger(__name__)
@@ -73,7 +74,11 @@ def _generate_audio_stage(
         raw_subs = json.loads(subs_path.read_text(encoding="utf-8"))
         subtitles = [((float(item[0][0]), float(item[0][1])), nepali_punctuation(item[1])) for item in raw_subs]
     else:
-        transcription = generate_transcription(audio_output_filepath)
+        phrase_hints = list(dict.fromkeys(w.strip("।?!,.;:\"'()") for w in story.split() if len(w.strip("।?!,.;:\"'()")) > 1))
+        try:
+            transcription = generate_transcription(audio_output_filepath, phrase_hints=phrase_hints)
+        except TypeError:
+            transcription = generate_transcription(audio_output_filepath)
         subtitles = get_subtitle(transcription)
         subs_path.parent.mkdir(parents=True, exist_ok=True)
         subs_path.write_text(json.dumps(subtitles, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -159,7 +164,7 @@ def _load_or_create_json(path: Path, create):
 
 
 def _generate_visuals_stage(
-    story: str, scenes: list[str], run_path: str
+    story: str, scenes: list[str], run_path: str, visual_style: str | None = None
 ) -> tuple[dict, list[dict], list[str], dict[int, dict]]:
     """Decide how every character looks, get one reference image per character,
     plan each scene's shot, and draw each scene's opening frame from those references.
@@ -169,16 +174,18 @@ def _generate_visuals_stage(
     independently generated clips. Doesn't depend on audio, so it runs
     alongside `_generate_audio_stage`.
     """
+    style_obj = get_style(visual_style or settings.VISUAL_STYLE)
     output_dir = Path(run_path) / settings.OUTPUT_PATH
-    sheet = _load_or_create_json(output_dir / "characters.json", lambda: build_character_sheet(story))
+    sheet = _load_or_create_json(output_dir / "characters.json", lambda: build_character_sheet(story, visual_style=style_obj.name))
     logger.info(
-        "Character sheet: %s",
+        "Character sheet (%s): %s",
+        style_obj.name,
         ", ".join(c["id"] for c in sheet["characters"]) or "(no recurring characters)",
     )
 
     def _reference_for(character: dict):
         image_path = os.path.join(run_path, settings.IMAGE_PATH, f"ref_{character['id']}.png")
-        return resolve_reference(character, sheet["style"], image_path)
+        return resolve_reference(character, sheet["style"], image_path, visual_style=style_obj.name)
 
     references = {}
     characters = sheet["characters"]
@@ -196,7 +203,7 @@ def _generate_visuals_stage(
     (output_dir / "references.json").write_text(json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8")
 
     plan = _load_or_create_json(output_dir / "scene_plan.json", lambda: plan_scenes(scenes, sheet))
-    real = _find_real_media_stage(scenes, plan, run_path)
+    real = _find_real_media_stage(scenes, plan, run_path) if style_obj.allow_real_media else {}
     if real:
         credits += [item["credit"] for item in real.values()]
         (output_dir / "references.json").write_text(json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -211,7 +218,7 @@ def _generate_visuals_stage(
         reference_paths = [
             references[cid].image_path for cid in plan[idx]["characters"] if cid in references
         ][:MAX_REFERENCE_IMAGES]
-        return generate_scene_frame(build_frame_prompt(sheet, plan[idx]), reference_paths, frame_path)
+        return generate_scene_frame(build_frame_prompt(sheet, plan[idx], visual_style=style_obj.name), reference_paths, frame_path)
 
     frame_paths: list[str] = [""] * len(scenes)
     with ThreadPoolExecutor(max_workers=_scene_worker_count(len(scenes))) as executor:
@@ -231,6 +238,7 @@ def _generate_clips_stage(
     subtitles: list[Subtitle],
     total_audio_seconds: float,
     real: dict[int, dict] | None = None,
+    visual_style: str | None = None,
 ) -> list[str]:
     """Turn each scene's opening frame into a clip of exactly that scene's narration time:
     animated by VIDEO_MODEL for "video" scenes, a slow camera move over the still for
@@ -261,7 +269,7 @@ def _generate_clips_stage(
         if not os.path.exists(raw_path):
             seconds = clip_duration(durations[idx])
             try:
-                generate_scene_clip(build_scene_prompt(sheet, plan[idx], seconds), frame_paths[idx], seconds, raw_path)
+                generate_scene_clip(build_scene_prompt(sheet, plan[idx], seconds, visual_style=visual_style), frame_paths[idx], seconds, raw_path)
             except VideoBlockedError as exc:
                 logger.warning("Scene %s was blocked by the video model (%s); using a camera move over the still", idx, exc)
                 fallbacks[idx] = str(exc)[:300]
@@ -301,17 +309,25 @@ def _cover_stage(run_path: str, cover: dict, frame_paths: list[str]) -> str | No
         return None
 
 
-def _pick_music() -> str | None:
-    """A random track from BACKGROUND_MUSIC_DIR, if any were added."""
-    folder = Path(settings.BACKGROUND_MUSIC_DIR)
-    tracks = sorted(p for p in folder.glob("*") if p.suffix.lower() in (".mp3", ".wav", ".m4a")) if folder.is_dir() else []
-    return str(random.choice(tracks)) if tracks else None
-
-
 def _assemble_video_stage(
-    run_path: str, audio_filepath: str, subtitles: list[Subtitle], clip_filenames: list[str], cover: dict | None = None
+    run_path: str,
+    audio_filepath: str,
+    subtitles: list[Subtitle],
+    clip_filenames: list[str],
+    cover: dict | None = None,
+    topic: str | None = None,
+    story: str | None = None,
 ) -> str | None:
     final_video_output_filepath = os.path.join(run_path, settings.OUTPUT_PATH, "final_video.mp4")
+    plan_path = Path(run_path) / settings.OUTPUT_PATH / "script_plan.json"
+    plan = None
+    if plan_path.exists():
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not read script_plan.json for music selection: %s", exc)
+
+    bg_music = get_background_music(topic=topic, story=story, plan=plan)
     return merge_video_clips(
         final_video_output_filepath,
         voice_over=audio_filepath,
@@ -319,7 +335,7 @@ def _assemble_video_stage(
         clip_filenames=clip_filenames,
         hook_title=cover,
         branding=True,
-        background_music=_pick_music(),
+        background_music=bg_music,
     )
 
 
@@ -371,7 +387,11 @@ def _publish_stage(run_path: str, story: str, run_id: str) -> None:
     logger.info("Instagram upload complete")
 
 
-def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str | None:
+def run_pipeline_v1(
+    topic: str | None = None,
+    run_id: str | None = None,
+    visual_style: str | None = None,
+) -> str | None:
     """Run the end-to-end story -> video -> publish pipeline.
 
     Pass `run_id` to resume a previous run: any stage whose output already
@@ -388,17 +408,18 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
     that still fails after retries fails the run rather than publishing a
     video with a missing scene.
     """
+    style_obj = get_style(visual_style or settings.VISUAL_STYLE, strict=True)
     if settings.CLIP_MODE not in CLIP_MODES:
         raise ValueError(f"CLIP_MODE must be one of {', '.join(CLIP_MODES)}, got {settings.CLIP_MODE!r}")
     current_run_id = run_id or str(uuid.uuid4())
     logger.info(
-        "Starting pipeline run_id=%s topic=%s mode=%s video_model=%s",
-        current_run_id, topic or "auto", settings.CLIP_MODE, settings.VIDEO_MODEL,
+        "Starting pipeline run_id=%s topic=%s style=%s mode=%s video_model=%s",
+        current_run_id, topic or "auto", style_obj.name, settings.CLIP_MODE, settings.VIDEO_MODEL,
     )
     ensure_directories(current_run_id)
     run_path = _run_path(current_run_id)
 
-    initial_fields = {"status": "running"}
+    initial_fields = {"status": "running", "visual_style": style_obj.name}
     if topic is not None:
         initial_fields["topic"] = topic
     run_store.upsert_run(current_run_id, **initial_fields)
@@ -413,7 +434,7 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             audio_future = executor.submit(_generate_audio_stage, story, run_path)
-            visuals_future = executor.submit(_generate_visuals_stage, story, scenes, run_path)
+            visuals_future = executor.submit(_generate_visuals_stage, story, scenes, run_path, visual_style=style_obj.name)
             audio_filepath, total_audio_duration, subtitles = audio_future.result()
             sheet, plan, frame_paths, real = visuals_future.result()
         run_store.upsert_run(current_run_id, status="audio_ready")
@@ -428,10 +449,19 @@ def run_pipeline_v1(topic: str | None = None, run_id: str | None = None) -> str 
             subtitles,
             total_audio_duration.total_seconds(),
             real,
+            visual_style=style_obj.name,
         )
         run_store.upsert_run(current_run_id, status="media_ready")
 
-        final_video_path = _assemble_video_stage(run_path, audio_filepath, subtitles, generated_video_clips, cover)
+        final_video_path = _assemble_video_stage(
+            run_path,
+            audio_filepath,
+            subtitles,
+            generated_video_clips,
+            cover,
+            topic=topic,
+            story=story,
+        )
 
         if not final_video_path:
             logger.warning("Pipeline completed without creating final video for run_id=%s", current_run_id)

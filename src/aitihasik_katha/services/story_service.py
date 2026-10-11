@@ -2,10 +2,6 @@ import re
 from dataclasses import dataclass, field
 from functools import lru_cache
 
-# Must be imported before langchain_google_genai below: faiss's native library needs to
-# init before anything pulling in gRPC/protobuf, or the process segfaults. See cli.py.
-from ..storage.vector_store import get_store
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from ..core.logging import get_logger
@@ -19,20 +15,19 @@ from .script_planner import ScriptPlan, plan_script
 
 logger = get_logger(__name__)
 
-MAX_ARCHIVE_CHARS = 25_000
-
 MAX_REVISIONS = 3
 BANNED_OPENERS = ("तपाईंलाई थाहा छ", "के तपाईंलाई", "कल्पना गर्नुहोस्", "भनिन्छ", "किंवदन्ती", "एक समयको")
 
 STORY_PROMPT = """You write the narration for a vertical history video about Nepal (Instagram Reels, TikTok,
 YouTube Shorts) planned to run about {seconds} seconds. It is read aloud by a voice-over and shown as
 word-by-word captions. The goal: a viewer who knows NOTHING about history understands every sentence the
-first time they hear it, stays to the end, watches again, and sends it to a friend.
+first time they hear it, learns a unique, fascinating fact they never knew before, stays to the end,
+and is compelled to share it with friends and save it for later.
 
 LANGUAGE - this matters most
 - Write the way a Nepali YouTuber talks to friends in Kathmandu: everyday spoken Nepali in Devanagari,
   mixed naturally with common English words people really say (king, palace, festival, secret, real story,
-  wait, seriously, shocking, viral, officially). Not a news anchor, not a textbook, not a poem.
+  wait, seriously, shocking, viral, officially, record). Not a news anchor, not a textbook, not a poem.
 - Use simple, everyday words. Never use bookish or Sanskritised words. Say "भनिन्छ" or "मान्छेहरू भन्छन्",
   never "किंवदन्ती" or "जनविश्वास"; "रोक" never "प्रतिबन्ध"; "देखाउँछ" never "दर्शाउँछ"; "मरिसकेका"
   never "दिवंगत".
@@ -40,7 +35,10 @@ LANGUAGE - this matters most
   time ("पिङ, मतलब बाँसको ठूलो झुला").
 - Use the sentence-ending "।" in Nepali, never ".".
 
-CLARITY
+CLARITY & TRUSTABILITY
+- Ground the story in concrete, deeply researched trust anchors from the research brief: mention authentic
+  specific names, exact locations (specific courtyards, palace gates, embassies, border towns), documented
+  dates, or royal decrees/treaties when relevant. Specific evidence makes the story undeniably credible and captivating.
 - The video answers ONE question. Follow the plan below; do not add facts from outside it, and do not try
   to cover everything.
 - Leave out side details that do not move the answer forward (what an object's shape resembles, which god a
@@ -49,9 +47,13 @@ CLARITY
   loosely related facts, no sentence that contradicts or repeats another, and no empty filler such as
   "अनौठो", "रहस्यमय" or "तर यो त सुरुवात मात्र थियो" unless the next sentence delivers something that
   really is bigger.
-- Use ONLY the research brief and archive excerpts for facts. If they do not confirm something the
+- Use ONLY the research brief for facts. If it does not confirm something the
   topic asks about (an official declaration, a date, a number), say so in one short plain sentence such as
   "यसको पक्का प्रमाण भने भेटिँदैन।" Never invent it. A legend is told as a legend: "भनिन्छ ... ।"
+
+DATES & HISTORICAL ACCURACY (CRITICAL)
+- For events in Nepali history (especially from the Shah and Rana eras onward, like the 2007 revolution, Kot Parva, or Treaty eras), ALWAYS write iconic dates in Nepali Bikram Sambat (वि.सं.) format: e.g. "२००७ साल फागुन ७", "२००७ साल कार्तिक २१", "१९०३ साल", "२०२८ साल", etc.
+- STRICT RULE: NEVER write English/Western month names in Devanagari (such as "फेब्रुअरी", "नोभेम्बर", "मार्च", "अप्रिल"). Speech-to-text acoustic recognition corrupts these into incorrect words (e.g. "फेब्रुअरी" gets mistranscribed as "जेठ १"). When mentioning a Gregorian year, write only the year in Nepali (e.g. "सन् १९५० मा", never "फेब्रुअरी १९५१ मा").
 
 STRUCTURE
 1. HOOK - the first sentence, under 3 seconds: one specific, visual shock a stranger understands at once:
@@ -64,10 +66,17 @@ STRUCTURE
 3. STORY - short sentences with rising stakes and concrete details (names, numbers, places), about one new
    fact or turn every four to five seconds. Around 12-15 seconds in, and about every 15 seconds after that,
    open a new question the viewer needs answered, using a real turn from the plan, not a stock phrase.
-4. PAYOFF - the answer the hook promised, in plain words.
-5. LOOP ENDING - the last sentence points back to the hook's image or words, or leaves one sharp question
-   open, so the video feels like it starts again. No call to like, comment or follow; that goes in the
-   caption.
+4. PAYOFF - the climax that resolves the hook with concrete historical proof.
+5. SPOKEN CALL TO ACTION (CTA) & ENGAGEMENT PAYOFF - The final sentence MUST deliver an organic, conversational
+   spoken call to action (1 to 2 short sentences) that drives virality and retention:
+   - DEBATE / COMMENT HOOK: If the story has a moral, strategic or controversial dilemma, ask a sharp question
+     that sparks passionate debate in the comments (e.g. "तपाईंको विचारमा के राजाको यो कदम सही थियो? कमेन्टमा लेख्नुहोस्।"
+     or "तपाईं त्यो ठाउँमा भएको भए के गर्नुहुन्थ्यो?").
+   - SHARE TRIGGER (Social Currency): Encourage viewers to share this untold revelation with friends:
+     (e.g. "नेपालको यो अनौठो इतिहास आफ्ना साथीहरूलाई पनि सेयर गर्नुहोस्।").
+   - SAVE & FOLLOW TRIGGER (Utility): Call on viewers to save this history and follow:
+     (e.g. "नेपालका यस्तै अनसुना र प्रमाणित इतिहासका लागि अहिले नै सेभ र फलो गर्नुहोस्।").
+   Keep the spoken CTA completely natural and integrated with the story's ending—never sound robotic or salesy.
 
 STYLE
 - Only Nepali (Devanagari) and English letters. No letters from any other script.
@@ -98,9 +107,6 @@ Beats, in order:
 
 ## Research brief
 {research}
-
-## Archive excerpts
-{archive}
 """
 
 REVISION_NOTE = """
@@ -134,15 +140,6 @@ def _get_llm() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(model=settings.CHAT_MODEL, api_key=settings.GEMINI_API_KEY)
 
 
-def get_archive_context(topic: str | None = None) -> tuple[str, str]:
-    """Matching passages from the local archive, plus the passage the story is seeded
-    from (a random one when there's no topic)."""
-    store = get_store()
-    seed = topic or store.get_random_document()["documents"]
-    documents = store.get_similar_documents(seed)
-    return "---\n".join(document.strip() for document in documents)[:MAX_ARCHIVE_CHARS], seed
-
-
 @retry(exceptions=(Exception,), max_attempts=3, delay_seconds=5)
 def _invoke(prompt: str) -> str:
     content = _get_llm().invoke(prompt).content
@@ -157,35 +154,29 @@ def _invoke(prompt: str) -> str:
 def write_story(topic: str | None = None) -> Story:
     """Narration for one video.
 
-    With a topic, the web research on that topic leads and matching archive passages
-    support it. Without one, a random archive passage picks the subject and the web
-    research expands on it.
+    With a topic, web research investigates that topic. Without one, web research
+    identifies an authentic, fascinating untold subject from Nepali history and researches it.
     """
-    archive, seed = get_archive_context(topic)
-
     brief, sources = "", []
     if settings.USE_WEB_RESEARCH:
         try:
-            result = research(topic=topic, archive_passage=None if topic else seed)
+            result = research(topic=topic)
             brief, sources = result.brief, result.sources
         except Exception as exc:  # noqa: BLE001
-            # A requested topic is rarely covered by the archive, which would then steer the
-            # story to an unrelated subject; fail so the run can be resumed instead.
             if topic:
                 raise RuntimeError(f"Web research failed for the topic, not writing the story: {exc}") from exc
-            logger.warning("Web research failed, writing from the archive only: %s", exc)
+            logger.warning("Web research failed: %s", exc)
 
-    plan = plan_script(topic, brief, archive)
+    plan = plan_script(topic, brief)
     logger.info("Planned a %ss video (about %d words): %s", plan.seconds, plan.target_words, plan.reason)
     prompt = STORY_PROMPT.format(
         seconds=plan.seconds,
         min_words=plan.min_words,
         max_words=plan.max_words,
-        topic=topic or "(none: tell the story from the archive excerpts)",
+        topic=topic or "(none: choose an untold story from the research brief)",
         angle=plan.angle or "(choose one clear question and answer it)",
         beats="\n".join(f"- {beat}" for beat in plan.beats) or "- (hook, context, turns, payoff, loop ending)",
         research=brief or "(none)",
-        archive=archive or "(none)",
     )
     text = nepali_punctuation(_invoke(prompt))
     for revision in range(MAX_REVISIONS + 1):
@@ -258,4 +249,8 @@ def _find_problems(topic: str | None, text: str, brief: str, plan: ScriptPlan) -
         found.problems.extend(f"This is confusing or does not follow from the sentence before: {part}" for part in review.confusing_parts)
         if review.weak_hook:
             found.problems.append(f"The hook is weak ({review.hook_issue or 'vague'}). Open with one specific, visual shock.")
+        if getattr(review, "missing_cta", False):
+            found.problems.append(
+                "The story ends without an organic spoken call to action. End with a sharp debate question, a share prompt, or a save/follow call."
+            )
     return found

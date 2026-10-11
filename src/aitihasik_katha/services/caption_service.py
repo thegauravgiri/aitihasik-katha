@@ -22,16 +22,16 @@ LANGUAGE
 STRUCTURE
 1. HOOK - the first line, at most 90 characters so it shows in full before Instagram's "more" cut: the
    most shocking concrete fact from the story, in plain words. It makes people stop scrolling.
-2. SHORT STORY - 2 to 4 short lines that tell the heart of the video again in a way that makes people want
-   to watch. Do not add facts that are not in the story. Mark anything that is only a legend as
-   "भनिन्छ".
-3. ONE QUESTION - a specific question about this story people can answer in a few words (for example
-   "तपाईं भए ढोका खोल्नुहुन्थ्यो?"). Never a generic "तपाईंलाई के लाग्छ?".
-4. SEND LINE - one line naming a specific kind of person to send it to, tied to this story (for example
-   "यो भिडियो दसैँमा पनि घर नफर्कने साथीलाई पठाउनुहोस्।").
-5. SAVE LINE - one short line giving viewers a clear reason to save/bookmark this video for later
+2. SHORT STORY & TRUST ANCHORS - 2 to 4 short lines summarizing the heart of the video with verified
+   historical facts (mentioning concrete names, dates, treaties, or royal decrees from the story). Give viewers
+   social currency so they look smart sharing it. Mark anything that is only a legend as "भनिन्छ".
+3. ONE QUESTION (Debate Hook) - a specific question about this story people can answer in a few words (for example
+   "तपाईं भए ढोका खोल्नुहुन्थ्यो?"). Sparks comment debate. Never a generic "तपाईंलाई के लाग्छ?".
+4. SEND LINE (Share Trigger) - one line naming a specific kind of person to send it to, tied to this story (for example
+   "यो भिडियो दसैँमा पनि घर नफर्कने साथीलाई पठाउनुहोस्।"). Gives viewers social currency.
+5. SAVE LINE (Save Trigger) - one short line giving viewers a clear reason to save/bookmark this video for later
    (for example "नेपालको यो अनौठो इतिहास सम्झिराख्न अहिले नै save गरिहाल्नुस्।" or "गोरखा जाँदा नबिर्सिन यो भिडियो save गर्नुहोस्।").
-6. FOLLOW LINE - one short, natural line that tells people why to follow: "हरेक हप्ता नेपालको एउटा
+6. FOLLOW LINE (Retention) - one short, natural line that tells people why to follow: "हरेक हप्ता नेपालको एउटा
    अनसुनेको इतिहास चाहिन्छ भने फलो गर्नुहोस्।" Do not sound salesy.
 7. HASHTAGS - 4 to 6 relevant English hashtags at the end, mixing niche and broad.
 
