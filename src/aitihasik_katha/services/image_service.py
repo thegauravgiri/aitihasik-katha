@@ -30,21 +30,40 @@ def generate_image(prompt: str, reference_pngs: list[bytes] = ()) -> bytes:
     """A 9:16 image from IMAGE_MODEL, optionally guided by reference images."""
     settings.require("IMAGE_MODEL")
     contents = [types.Part.from_bytes(data=png, mime_type="image/png") for png in reference_pngs]
-    response = get_genai_client().models.generate_content(
-        model=settings.IMAGE_MODEL,
-        contents=[*contents, prompt],
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE"],
-            image_config=types.ImageConfig(aspect_ratio="9:16", image_size=settings.IMAGE_SIZE),
-        ),
-    )
-    candidate = response.candidates[0] if response.candidates else None
-    parts = (candidate.content.parts if candidate and candidate.content else None) or []
-    for part in parts:
-        if part.inline_data and part.inline_data.data:
-            return part.inline_data.data
-    reason = getattr(candidate, "finish_reason", None) if candidate else "no candidates"
-    raise RuntimeError(f"{settings.IMAGE_MODEL} returned no image (finish reason: {reason})")
+    client = get_genai_client()
+
+    models_to_try = [settings.IMAGE_MODEL]
+    if "gemini-2.5-flash-image" not in models_to_try:
+        models_to_try.append("gemini-2.5-flash-image")
+
+    last_exc = None
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[*contents, prompt],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(aspect_ratio="9:16", image_size=settings.IMAGE_SIZE),
+                ),
+            )
+            candidate = response.candidates[0] if response.candidates else None
+            parts = (candidate.content.parts if candidate and candidate.content else None) or []
+            for part in parts:
+                if part.inline_data and part.inline_data.data:
+                    return part.inline_data.data
+            reason = getattr(candidate, "finish_reason", None) if candidate else "no candidates"
+            logger.warning("%s returned no image data (reason: %s)", model_name, reason)
+        except Exception as exc:
+            if "RESOURCE_EXHAUSTED" in str(exc) or "429" in str(exc):
+                logger.warning("Image model %s hit resource limit (%s), trying fallback model", model_name, exc)
+                last_exc = exc
+                continue
+            raise
+
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"All configured image models returned no image")
 
 
 def save_png(image_bytes: bytes, path: str) -> bytes:
