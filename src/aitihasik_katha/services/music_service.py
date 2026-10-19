@@ -28,15 +28,16 @@ _MOOD_KEYWORDS = {
     MOOD_MYSTIC: [
         "मन्दिर", "मूर्ति", "तान्त्रिक", "पूजा", "देवी", "कुमारी", "काष्ठमण्डप", "श्राप",
         "गुठी", "जात्रा", "सुनको चरा", "चमत्कार", "रहस्यमय मन्दिर", "मन्त्र", "घटस्थापना", "जमरा", "कलश", "दुर्गा",
+        "महानवमी", "विजयादशमी", "तलेजु",
         "temple", "statue", "tantric", "curse", "ritual", "deity", "sacred", "priest",
-        "myth", "mystic", "shrine", "goddess", "kumari", "incantation", "ghatasthapana", "jamara", "navaratri"
+        "myth", "mystic", "shrine", "goddess", "kumari", "incantation", "ghatasthapana", "jamara", "navaratri", "mahanawami", "dashami"
     ],
     MOOD_HERITAGE: [
         "फुटबल", "खेल", "कला", "चाड", "दसैँ", "पिङ", "संस्कृति", "गीत", "इतिहास",
         "पायोनियर", "नेपालको खेल", "दरबार शैली", "भवन", "सडक", "झण्डा", "ध्वजा", "प्रतीक",
-        "बोनस", "पजनी", "पेश्की", "तलब", "भत्ता",
+        "बोनस", "पजनी", "पेश्की", "तलब", "भत्ता", "टीका", "अक्षता", "विजयादशमी",
         "football", "sport", "pioneer", "culture", "festival", "tradition", "heritage",
-        "legacy", "origin", "kite", "dashain", "architect", "memoir", "everyday", "flag", "symbol", "pennant", "bonus", "salary"
+        "legacy", "origin", "kite", "dashain", "architect", "memoir", "everyday", "flag", "symbol", "pennant", "bonus", "salary", "tika"
     ],
     MOOD_TRIUMPHANT: [
         "प्रजातन्त्र", "क्रान्ति", "घोषणा", "संविधान", "अधिकार", "राणा शासन ढल्यो", "विद्रोह",
