@@ -47,10 +47,10 @@ _MOOD_KEYWORDS = {
     ],
     MOOD_TENSION: [
         "षड्यन्त्र", "हत्या", "दरबार", "बन्दी", "पिकनिक", "भागे", "भण्डारखाल", "कोत",
-        "राणा", "धोका", "गुपचुप", "कैदी", "खतरा", "आशङ्का",
+        "राणा", "धोका", "गुपचुप", "कैदी", "खतरा", "आशङ्का", "विमान", "अपहरण", "हाइज्याक",
         "conspiracy", "escape", "murder", "assassination", "secret", "plot", "intrigue",
         "betrayal", "poison", "fled", "danger", "revolt", "coup", "ambush", "suspense",
-        "picnic", "prisoner"
+        "picnic", "prisoner", "hijack", "plane", "heist"
     ],
 }
 
